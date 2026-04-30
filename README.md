@@ -318,12 +318,6 @@ uv run pytest tests/ -q --cov=rag --cov-branch
 - `scripts/migrate.py` — idempotent migration runner
 - `tests/` — pytest (tuner, API with mocked DB, optional integration against real Postgres)
 
-## Before you publish on GitHub
-
-1. Replace `[Your Name]` in `LICENSE` with your legal name or organization.
-2. Confirm `DATABASE_URL` and passwords are **not** committed (use `.env`, which should stay local).
-3. Read `SECURITY.md` if you deploy this beyond localhost.
-
 ## License
 
 This project is licensed under the **MIT License** — see [LICENSE](LICENSE).

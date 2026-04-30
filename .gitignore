@@ -3,3 +3,21 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .env
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Setuptools / build artifacts
+*.egg-info/
+dist/
+build/
+
+# OS
+.DS_Store
+
+# Type checkers / linters (if added later)
+.mypy_cache/
+.ruff_cache/

@@ -1,0 +1,16 @@
+# Tuner MVP guardrails — bounded deltas, cooldown, rollback triggers (interpreted by src/rag/tuner.py).
+schema_version: "1"
+max_delta_ef_search_per_step: 8
+max_delta_ivfflat_probes_per_step: 2
+min_ef_search: 16
+max_ef_search: 200
+min_ivfflat_probes: 1
+max_ivfflat_probes: 50
+cooldown_seconds_between_changes: 60
+rollback_p99_latency_ms_multiplier: 1.25
+rollback_ingest_backlog_threshold_batches: 3
+canary_fraction: 0.0
+whitelist_runtime_params:
+  - hnsw.ef_search
+  - ivfflat.probes
+target_p99_latency_ms: 120

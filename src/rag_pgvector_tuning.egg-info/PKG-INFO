@@ -1,0 +1,213 @@
+Metadata-Version: 2.4
+Name: rag-pgvector-tuning
+Version: 0.1.0
+Summary: Learn RAG retrieval with PostgreSQL pgvector: ingest, ANN search, and YAML-driven HNSW/IVFFlat runtime tuning (FastAPI demo, no API keys).
+License: MIT
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: fastapi>=0.109.0
+Requires-Dist: uvicorn[standard]>=0.27.0
+Requires-Dist: asyncpg>=0.29.0
+Requires-Dist: pydantic>=2.5.0
+Requires-Dist: pydantic-settings>=2.1.0
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: numpy>=1.26.0
+Provides-Extra: dev
+Requires-Dist: httpx>=0.26.0; extra == "dev"
+Requires-Dist: pytest>=8.0.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=1.3.0; extra == "dev"
+Requires-Dist: pytest-cov>=7.1.0; extra == "dev"
+Dynamic: license-file
+
+# rag-pgvector-tuning
+
+**Suggested public repository name:** `rag-pgvector-tuning` — a short name that tells readers they will find **RAG (retrieval-augmented generation) data**, **PostgreSQL with [pgvector](https://github.com/pgvector/pgvector)**, and **runtime tuning** of vector search parameters.
+
+## What this project is (in plain language)
+
+- **RAG** means: you store text **chunks** with **embedding vectors** (numbers that represent meaning), then **search** for chunks similar to a user question to feed an LLM. This repo focuses on the **retrieval** and **database** side, not on calling OpenAI or similar APIs.
+- **pgvector** is a PostgreSQL extension that stores vectors and finds nearest neighbors (similar vectors) quickly.
+- **Physical tuning** here means: adjusting **query-time** settings for the index, mainly **HNSW `ef_search`** or **IVFFlat `probes`**, to trade **speed vs. recall/quality**. The API can suggest changes from simple telemetry and apply them within **guardrails** you configure in YAML.
+
+Embeddings in this demo are **deterministic fake vectors** (hash-based). That keeps the repo runnable **without API keys** while you learn ingestion, search, and tuning.
+
+## Who this is for
+
+Developers new to RAG or pgvector who want a **small, runnable FastAPI service** with:
+
+- Docker Postgres + pgvector
+- SQL migrations
+- HTTP endpoints for ingest, retrieve, and tuning
+- Config files you can edit without touching Python
+
+## What you need installed
+
+- **Docker** (for Postgres), or your own PostgreSQL 16+ with **pgvector**
+- **Python 3.11+**
+- **[uv](https://github.com/astral-sh/uv)** (recommended) or `pip` with a virtual environment
+
+## Quick start
+
+1. **Start the database**
+
+   ```bash
+   docker compose up -d postgres
+   ```
+
+2. **Point the app at the database** (default matches `docker-compose.yml`)
+
+   ```bash
+   export DATABASE_URL=postgresql://rag:rag@localhost:5433/rag
+   ```
+
+   You can also copy [`.env.example`](.env.example) to `.env` and edit the URL (loaded by `src/rag/settings.py`).
+
+3. **Install dependencies and run migrations**
+
+   ```bash
+   uv sync
+   uv run python scripts/migrate.py
+   ```
+
+   For an **IVFFlat-oriented** profile and alternate SQL, see the section *Switching index family* below.
+
+4. **Run the API**
+
+   ```bash
+   uv run uvicorn rag.main:app --host 0.0.0.0 --port 8000 --app-dir src
+   ```
+
+5. **Open interactive docs**
+
+   In a browser: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+## Example: ingest chunks
+
+This inserts (or updates) rows in the `chunks` table. Vectors are **768-dimensional** in the default config (`config/embedding.yaml`).
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/ingest/chunks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "chunks": [
+      {
+        "tenant_id": "demo",
+        "source_type": "doc",
+        "doc_id": "manual-1",
+        "chunk_index": 0,
+        "content": "PostgreSQL can store vectors with the pgvector extension."
+      }
+    ]
+  }'
+```
+
+Expected response shape: `{"upserted": <n>, "duration_ms": <float>}`.
+
+## Example: retrieve similar chunks
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/retrieve \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "How do I store embeddings?",
+    "k": 5,
+    "tenant_id": "demo"
+  }'
+```
+
+The API uses the **active profile** from `config/profiles.yaml` to set session parameters (e.g. HNSW `ef_search`) before running the query. The response includes match rows, timings, and which profile was used.
+
+Optional filters:
+
+- `tenant_id` — only chunks for that tenant
+- `source_type` — e.g. only `"doc"` chunks
+
+## Example: see active tuning profile
+
+```bash
+curl -s http://127.0.0.1:8000/config/active-profile
+```
+
+## Example: telemetry summary
+
+```bash
+curl -s http://127.0.0.1:8000/telemetry/summary
+```
+
+## Example: tuner (recommend and optional auto-apply)
+
+The tuner reads **in-process** telemetry (latency percentiles). It does not replace a full production control plane; it is an **MVP** to show the idea.
+
+Get a recommendation:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/tuner/recommend
+```
+
+Apply one step if the recommendation says so (`auto_apply=true`):
+
+```bash
+curl -s -X POST "http://127.0.0.1:8000/tuner/step?auto_apply=true"
+```
+
+Override search knobs for one session (allowed keys are **whitelisted** in `config/tuner_guardrails.yaml`):
+
+```bash
+curl -s -X PATCH http://127.0.0.1:8000/config/runtime-search \
+  -H "Content-Type: application/json" \
+  -d '{"hnsw_ef_search": 48}'
+```
+
+Clear overrides:
+
+```bash
+curl -s -X PATCH http://127.0.0.1:8000/config/runtime-search \
+  -H "Content-Type: application/json" \
+  -d '{"clear_overrides": true}'
+```
+
+## Configuration files (read this before emailing anyone)
+
+| File | Purpose |
+|------|---------|
+| `config/embedding.yaml` | Declares **embedding dimension** and a label for the demo “model”. Replace the demo embedder in code when you use a real model. |
+| `config/profiles.yaml` | **Which index family** (HNSW vs IVFFlat), **build** hints, and **default search** parameters (`hnsw_ef_search`, `ivfflat_probes`). Set `active_profile` to the profile name you want. |
+| `config/tuner_guardrails.yaml` | **Bounds** for the tuner: min/max `ef_search` and probes, max change per step, **cooldown** between auto changes, **target_p99_latency_ms**, rollback multipliers, and **whitelist** of runtime params. |
+
+## Switching index family (HNSW vs IVFFlat)
+
+- Default migrations create an **HNSW** index (see `migrations/003_index_hnsw.sql`).
+- The profile `high_qps_approximate` in `config/profiles.yaml` is documented as **IVFFlat-oriented**. To align the database with that profile you must use the **alternate** migration path described in code comments and run:
+
+  ```bash
+  uv run python scripts/migrate.py --alternate-ivfflat
+  ```
+
+  (Only after you have followed any SQL/index swap steps your deployment needs; see `migrations/alternate/ivfflat_profile.sql`.)
+
+Do not flip `active_profile` to IVFFlat in YAML unless your database actually has a matching **IVFFlat** index — otherwise searches will be wrong or fail.
+
+## Run tests
+
+```bash
+uv sync --extra dev
+uv run pytest tests/ -q
+```
+
+## Project layout
+
+- `src/rag/` — FastAPI app, tuner, telemetry, config loading
+- `migrations/` — numbered SQL files applied by `scripts/migrate.py`
+- `scripts/migrate.py` — idempotent migration runner
+- `tests/` — pytest tests for the tuner
+
+## Before you publish on GitHub
+
+1. Replace `[Your Name]` in `LICENSE` with your legal name or organization.
+2. Confirm `DATABASE_URL` and passwords are **not** committed (use `.env`, which should stay local).
+3. Read `SECURITY.md` if you deploy this beyond localhost.
+
+## License
+
+This project is licensed under the **MIT License** — see [LICENSE](LICENSE).

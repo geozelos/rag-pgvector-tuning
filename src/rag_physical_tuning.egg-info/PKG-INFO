@@ -1,0 +1,32 @@
+Metadata-Version: 2.4
+Name: rag-physical-tuning
+Version: 0.1.0
+Summary: Greenfield RAG with dynamic physical-layer tuning (pgvector + telemetry)
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.109.0
+Requires-Dist: uvicorn[standard]>=0.27.0
+Requires-Dist: asyncpg>=0.29.0
+Requires-Dist: pydantic>=2.5.0
+Requires-Dist: pydantic-settings>=2.1.0
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: numpy>=1.26.0
+Provides-Extra: dev
+Requires-Dist: httpx>=0.26.0; extra == "dev"
+Requires-Dist: pytest>=8.0.0; extra == "dev"
+
+# RAG physical tuning (greenfield)
+
+## Quick start
+
+```bash
+docker compose up -d postgres
+export DATABASE_URL=postgresql://rag:rag@localhost:5433/rag
+uv sync
+uv run python scripts/migrate.py
+uv run uvicorn rag.main:app --host 0.0.0.0 --port 8000 --app-dir src
+```
+
+`POST /chunks` ingests with a random unit vector of dimension 768 (demo). `POST /retrieve` runs vector search with tunable `ef_search` / `ivfflat.probes` from active profile.
+
+See `config/profiles.yaml` and `config/tuner_guardrails.yaml`.

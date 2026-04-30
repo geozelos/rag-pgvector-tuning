@@ -1,0 +1,12 @@
+.venv
+.git
+.gitignore
+.env
+__pycache__
+*.pyc
+.pytest_cache
+.coverage
+htmlcov
+tests
+.agent_transcripts
+.cursor

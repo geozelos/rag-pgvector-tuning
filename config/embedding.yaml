@@ -1,0 +1,3 @@
+embedding:
+  model_id: "demo-hash-embedding"
+  embedding_dim: 768

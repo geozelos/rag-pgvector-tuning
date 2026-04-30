@@ -1,0 +1,33 @@
+# Versioned physical profiles (whitelist-friendly). Runtime search knobs: hnsw.ef_search, ivfflat.probes.
+schema_version: "1"
+active_profile: small_corpus_balanced
+
+profiles:
+  small_corpus_balanced:
+    description: "HNSW defaults for dev / modest corpus."
+    index_family: hnsw
+    build:
+      m: 16
+      ef_construction: 64
+    search:
+      hnsw_ef_search: 40
+      ivfflat_probes: null
+
+  high_qps_approximate:
+    description: "IVFFlat-oriented; relies on IVF index + probes at query time."
+    index_family: ivfflat
+    build:
+      lists: 100
+    search:
+      hnsw_ef_search: null
+      ivfflat_probes: 10
+
+  tenant_shard_heavy:
+    description: "Stricter latency under filters; bump ef_search modestly."
+    index_family: hnsw
+    build:
+      m: 24
+      ef_construction: 96
+    search:
+      hnsw_ef_search: 56
+      ivfflat_probes: null

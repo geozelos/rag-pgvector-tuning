@@ -30,6 +30,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
+from rag import __version__ as _package_version
 from rag.config_loader import AppYamlConfig, load_config_defaults
 from rag.embeddings import demo_embedding
 from rag.models_config import EmbeddingModelConfig
@@ -61,6 +62,7 @@ app = FastAPI(
     title="rag-pgvector-tuning",
     description="RAG retrieval demo: PostgreSQL pgvector + YAML-driven search parameter tuning.",
     lifespan=lifespan,
+    version=_package_version,
 )
 
 

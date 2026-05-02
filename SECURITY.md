@@ -128,7 +128,7 @@ uv run pip-audit -r /tmp/deps-audit.txt
 **Findings**
 
 - With **`RAG_API_KEY`** / **`API_KEY`** unset (demo default), there are **no sessions or per-user credentials** — full anonymous access except probe routes.
-- With API key **set**, middleware accepts **`Authorization: Bearer`** or **`X-API-Key`** matching the shared secret — **no OAuth2**, **no MFA**, **no rotation story** in-app.
+- With API key **set**, clients may send **`Authorization: Bearer <token>`** or **`X-API-Key`** alone. If the header uses the Bearer prefix, **only** that token is validated (including rejecting an empty token); **`X-API-Key` is ignored** in that case — **no OAuth2**, **no MFA**, **no rotation story** in-app.
 
 **Mitigations**
 

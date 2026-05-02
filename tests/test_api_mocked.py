@@ -115,6 +115,25 @@ def test_ingest_with_x_api_key_header(http_client_mock_db_with_api_key: tuple[Te
     assert conn.executemany.await_count >= 1
 
 
+def test_empty_bearer_does_not_fallback_to_x_api_key(
+    http_client_mock_db_with_api_key: tuple[TestClient, object],
+) -> None:
+    """Malformed Bearer (empty token) must not ignore Authorization and accept X-API-Key instead."""
+    client, conn = http_client_mock_db_with_api_key
+    r = client.post(
+        "/ingest/chunks",
+        headers={
+            "Authorization": "Bearer ",
+            "X-API-Key": "test-secret-key",
+        },
+        json={
+            "chunks": [{"doc_id": "d1", "chunk_index": 0, "content": "hello"}],
+        },
+    )
+    assert r.status_code == 401
+    assert conn.executemany.await_count == 0
+
+
 def test_health_and_ready_skip_api_key(http_client_mock_db_with_api_key: tuple[TestClient, object]) -> None:
     client, conn = http_client_mock_db_with_api_key
     assert client.get("/health").status_code == 200

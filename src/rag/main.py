@@ -66,7 +66,12 @@ app = FastAPI(
 
 @app.middleware("http")
 async def optional_api_key_middleware(request: Request, call_next):
-    """When ``RAG_API_KEY`` is set, require Bearer or ``X-API-Key`` on all routes except probes."""
+    """When ``RAG_API_KEY`` is set, require credentials on all routes except probes.
+
+    If ``Authorization`` starts with ``Bearer `` (case-insensitive), only the Bearer
+    token is accepted (empty token after the prefix is rejected; ``X-API-Key`` is
+    not consulted). Otherwise ``X-API-Key`` alone may authenticate.
+    """
     path = request.url.path
     if path in ("/health", "/ready"):
         return await call_next(request)
@@ -74,12 +79,17 @@ async def optional_api_key_middleware(request: Request, call_next):
     if expected is None:
         return await call_next(request)
     auth_header = request.headers.get("Authorization") or ""
-    bearer_token: str | None = None
     lower = auth_header.lower()
     if lower.startswith("bearer "):
         bearer_token = auth_header[7:].strip()
-    x_api_key = request.headers.get("X-API-Key")
-    candidate = bearer_token if bearer_token else x_api_key
+        if not bearer_token:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "invalid or missing API key"},
+            )
+        candidate = bearer_token
+    else:
+        candidate = request.headers.get("X-API-Key")
     if candidate != expected:
         return JSONResponse(
             status_code=401,

@@ -298,6 +298,13 @@ curl -s -X PATCH http://127.0.0.1:8000/config/runtime-search \
 
 Do not flip `active_profile` to IVFFlat in YAML unless your database actually has a matching **IVFFlat** index — otherwise searches will be wrong or fail.
 
+## Operations (readiness, ingest limits, optional API key)
+
+- **`GET /health`** — process liveness only (no database call). Use for “is the Python process up?” probes.
+- **`GET /ready`** — readiness after migrations: PostgreSQL connectivity, **pgvector** extension loaded, and the **`chunks`** table exists. HTTP **503** with a JSON body when something is missing or the DB is unreachable — suitable for orchestrators that should not send traffic until the DB is usable.
+- **`MAX_INGEST_CHUNKS_PER_REQUEST`** — caps how many items you may send in one `POST /ingest/chunks` body (default **500**). Larger batches receive HTTP **413**.
+- **`RAG_API_KEY`** — optional shared secret. If set in `.env`, every route except **`GET /health`** and **`GET /ready`** requires `Authorization: Bearer <key>` or `X-API-Key: <key>`. The same value may be supplied via **`API_KEY`** (pydantic-settings alias). Leave unset for local demos. See **`SECURITY.md`** for production posture beyond this stub.
+
 ## Run tests
 
 ```bash

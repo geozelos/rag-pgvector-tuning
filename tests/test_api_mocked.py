@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
+import pytest
 from starlette.testclient import TestClient
 
 
@@ -12,6 +13,110 @@ def test_health_ok(http_client_mock_db: tuple[TestClient, object]) -> None:
     r = client.get("/health")
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
+
+
+def test_ready_ok(http_client_mock_db: tuple[TestClient, object]) -> None:
+    client, conn = http_client_mock_db
+    conn.fetchval = AsyncMock(side_effect=[1, True, True])
+    r = client.get("/ready")
+    assert r.status_code == 200
+    body = r.json()
+    assert body == {"status": "ready", "checks": {"database": True, "pgvector": True, "chunks_table": True}}
+
+
+def test_ready_503_when_pgvector_missing(http_client_mock_db: tuple[TestClient, object]) -> None:
+    client, conn = http_client_mock_db
+    conn.fetchval = AsyncMock(side_effect=[1, False, True])
+    r = client.get("/ready")
+    assert r.status_code == 503
+    body = r.json()
+    assert body["status"] == "not_ready"
+    assert body["checks"]["pgvector"] is False
+    assert "failed" in body["detail"]
+
+
+def test_ready_503_when_chunks_table_missing(http_client_mock_db: tuple[TestClient, object]) -> None:
+    client, conn = http_client_mock_db
+    conn.fetchval = AsyncMock(side_effect=[1, True, False])
+    r = client.get("/ready")
+    assert r.status_code == 503
+    assert r.json()["checks"]["chunks_table"] is False
+
+
+def test_ready_503_on_db_error(http_client_mock_db: tuple[TestClient, object]) -> None:
+    client, conn = http_client_mock_db
+    conn.fetchval = AsyncMock(side_effect=RuntimeError("connection refused"))
+    r = client.get("/ready")
+    assert r.status_code == 503
+    body = r.json()
+    assert body["status"] == "not_ready"
+    assert "connection refused" in body["detail"]
+
+
+def test_ingest_chunks_exceeds_limit_returns_413(
+    http_client_mock_db: tuple[TestClient, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import rag.main as main_mod
+
+    monkeypatch.setattr(main_mod._settings, "max_ingest_chunks_per_request", 2)
+    client, _conn = http_client_mock_db
+    r = client.post(
+        "/ingest/chunks",
+        json={
+            "chunks": [
+                {"doc_id": "a", "chunk_index": 0, "content": "x"},
+                {"doc_id": "b", "chunk_index": 0, "content": "y"},
+                {"doc_id": "c", "chunk_index": 0, "content": "z"},
+            ],
+        },
+    )
+    assert r.status_code == 413
+    assert "exceeds limit 2" in r.json()["detail"]
+
+
+def test_ingest_requires_api_key_when_configured(http_client_mock_db_with_api_key: tuple[TestClient, object]) -> None:
+    client, _conn = http_client_mock_db_with_api_key
+    r = client.post(
+        "/ingest/chunks",
+        json={
+            "chunks": [{"doc_id": "d1", "chunk_index": 0, "content": "hello"}],
+        },
+    )
+    assert r.status_code == 401
+    assert r.json()["detail"] == "invalid or missing API key"
+
+
+def test_ingest_with_bearer_api_key(http_client_mock_db_with_api_key: tuple[TestClient, object]) -> None:
+    client, conn = http_client_mock_db_with_api_key
+    r = client.post(
+        "/ingest/chunks",
+        headers={"Authorization": "Bearer test-secret-key"},
+        json={
+            "chunks": [{"doc_id": "d1", "chunk_index": 0, "content": "hello"}],
+        },
+    )
+    assert r.status_code == 200
+    assert conn.executemany.await_count >= 1
+
+
+def test_ingest_with_x_api_key_header(http_client_mock_db_with_api_key: tuple[TestClient, object]) -> None:
+    client, conn = http_client_mock_db_with_api_key
+    r = client.post(
+        "/ingest/chunks",
+        headers={"X-API-Key": "test-secret-key"},
+        json={
+            "chunks": [{"doc_id": "d1", "chunk_index": 0, "content": "hello"}],
+        },
+    )
+    assert r.status_code == 200
+    assert conn.executemany.await_count >= 1
+
+
+def test_health_and_ready_skip_api_key(http_client_mock_db_with_api_key: tuple[TestClient, object]) -> None:
+    client, conn = http_client_mock_db_with_api_key
+    assert client.get("/health").status_code == 200
+    conn.fetchval = AsyncMock(side_effect=[1, True, True])
+    assert client.get("/ready").status_code == 200
 
 
 def test_active_profile(http_client_mock_db: tuple[TestClient, object]) -> None:

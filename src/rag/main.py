@@ -8,7 +8,8 @@ FastAPI application: chunk ingestion, vector similarity search, and physical-lay
        uses the active profile's HNSW ``ef_search`` or IVFFlat ``probes`` (plus optional overrides).
 
 **Endpoints** (see also ``/docs`` when the server runs)
-    - ``GET /health`` — liveness.
+    - ``GET /health`` — liveness (process only; does not query the database).
+    - ``GET /ready`` — readiness: database connectivity, pgvector extension, ``chunks`` table.
     - ``GET /config/active-profile`` — active YAML profile and effective search params.
     - ``POST /ingest/chunks`` — upsert chunks with demo embeddings (deterministic, no external API).
     - ``POST /retrieve`` — k-NN order by cosine distance (pgvector ``<=>``).
@@ -26,6 +27,7 @@ from typing import Any, AsyncIterator
 
 import asyncpg
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from rag.config_loader import AppYamlConfig, load_config_defaults
@@ -62,6 +64,30 @@ app = FastAPI(
 )
 
 
+@app.middleware("http")
+async def optional_api_key_middleware(request: Request, call_next):
+    """When ``RAG_API_KEY`` is set, require Bearer or ``X-API-Key`` on all routes except probes."""
+    path = request.url.path
+    if path in ("/health", "/ready"):
+        return await call_next(request)
+    expected = _settings.api_key
+    if expected is None:
+        return await call_next(request)
+    auth_header = request.headers.get("Authorization") or ""
+    bearer_token: str | None = None
+    lower = auth_header.lower()
+    if lower.startswith("bearer "):
+        bearer_token = auth_header[7:].strip()
+    x_api_key = request.headers.get("X-API-Key")
+    candidate = bearer_token if bearer_token else x_api_key
+    if candidate != expected:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "invalid or missing API key"},
+        )
+    return await call_next(request)
+
+
 def bundle(req: Request) -> AppYamlConfig:
     return req.app.state.bundle
 
@@ -78,6 +104,45 @@ def pool(req: Request) -> asyncpg.Pool:
 async def health() -> dict[str, str]:
     """Return a simple status object for load balancers or smoke tests."""
     return {"status": "ok"}
+
+
+@app.get("/ready", response_model=None)
+async def ready(req: Request) -> JSONResponse | dict[str, Any]:
+    """Verify PostgreSQL, pgvector extension, and migrated ``chunks`` table (use for readiness probes)."""
+    checks: dict[str, bool] = {"database": False, "pgvector": False, "chunks_table": False}
+    pl = pool(req)
+    try:
+        async with pl.acquire() as conn:
+            await conn.fetchval("SELECT 1")
+            checks["database"] = True
+            ext_ok = await conn.fetchval(
+                "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector')"
+            )
+            checks["pgvector"] = bool(ext_ok)
+            tbl_ok = await conn.fetchval("SELECT to_regclass('public.chunks') IS NOT NULL")
+            checks["chunks_table"] = bool(tbl_ok)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("ready check failed: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "checks": checks,
+                "detail": str(exc),
+            },
+        )
+
+    failed = [name for name, ok in checks.items() if not ok]
+    if failed:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "checks": checks,
+                "detail": f"checks failed: {', '.join(failed)}",
+            },
+        )
+    return {"status": "ready", "checks": checks}
 
 
 @app.get("/config/active-profile")
@@ -122,6 +187,12 @@ async def ingest_chunks(req: Request, body: IngestPayload) -> dict[str, Any]:
     telemetry: TelemetryCollector = req.app.state.telemetry
     if not body.chunks:
         raise HTTPException(status_code=400, detail="chunks must be non-empty")
+    max_chunks = _settings.max_ingest_chunks_per_request
+    if len(body.chunks) > max_chunks:
+        raise HTTPException(
+            status_code=413,
+            detail=f"chunks length {len(body.chunks)} exceeds limit {max_chunks} (configure MAX_INGEST_CHUNKS_PER_REQUEST)",
+        )
     t0 = time.perf_counter()
     vals: list[tuple[Any, ...]] = []
     for row in body.chunks:

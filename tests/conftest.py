@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from rag.settings import Settings
+
 
 class _FakeTransaction:
     async def __aenter__(self) -> None:
@@ -59,6 +61,36 @@ def http_client_mock_db(
 ) -> Iterator[tuple[Any, FakeConn]]:
     """HTTP client with ``rag.main``'s ``asyncpg`` replaced (runs FastAPI lifespan via Starlette)."""
     import rag.main as main_mod
+
+    conn = FakeConn()
+
+    async def _create_pool(*_a: object, **_k: object) -> FakePool:
+        return FakePool(conn)
+
+    monkeypatch.setattr(main_mod, "asyncpg", SimpleNamespace(create_pool=_create_pool))
+
+    from starlette.testclient import TestClient
+
+    with TestClient(main_mod.app) as client:
+        yield client, conn
+
+
+@pytest.fixture
+def http_client_mock_db_with_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[tuple[Any, FakeConn]]:
+    """Same as ``http_client_mock_db`` but ``RAG_API_KEY`` is enforced on protected routes."""
+    import rag.main as main_mod
+
+    monkeypatch.setattr(
+        main_mod,
+        "_settings",
+        Settings(
+            database_url="postgresql://mock/mock",
+            api_key="test-secret-key",
+            max_ingest_chunks_per_request=500,
+        ),
+    )
 
     conn = FakeConn()
 

@@ -233,6 +233,31 @@ curl -s -X PATCH http://127.0.0.1:8000/config/runtime-search \
   -d '{"clear_overrides": true}'
 ```
 
+## Load generator (retrieve QPS)
+
+Use [`scripts/load_retrieve_qps.py`](scripts/load_retrieve_qps.py) to issue paced **`POST /retrieve`** traffic so **`/telemetry/summary`** and **`/tuner/recommend`** see sustained latency samples (hash embeddings make latency an easy knob to observe).
+
+Requires **httpx** from the dev group:
+
+```bash
+uv sync --group dev
+uv run python scripts/load_retrieve_qps.py --qps 15 --duration 45
+```
+
+With **`RAG_API_KEY`** enabled on the API:
+
+```bash
+uv run python scripts/load_retrieve_qps.py --api-key "$RAG_API_KEY" --qps 10 --duration 30 --tenant-id demo
+```
+
+Machine-readable summary:
+
+```bash
+uv run python scripts/load_retrieve_qps.py --qps 20 --duration 20 --json
+```
+
+See **`python scripts/load_retrieve_qps.py --help`** for options (`--base-url`, `--query`, `--k`, `--concurrency`, …).
+
 ## Configuration files (read this before emailing anyone)
 
 
@@ -283,6 +308,7 @@ uv run pytest tests/ -q --cov=rag --cov-branch
 - `src/rag/` — FastAPI app, tuner, telemetry, config loading
 - `migrations/` — numbered SQL files applied by `scripts/migrate.py`
 - `scripts/migrate.py` — idempotent migration runner
+- `scripts/load_retrieve_qps.py` — paced `/retrieve` load generator for tuner demos (needs `uv sync --group dev`)
 - `tests/` — pytest (tuner, API with mocked DB, optional integration against real Postgres)
 
 ## License

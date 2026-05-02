@@ -8,7 +8,8 @@ FastAPI application: chunk ingestion, vector similarity search, and physical-lay
        uses the active profile's HNSW ``ef_search`` or IVFFlat ``probes`` (plus optional overrides).
 
 **Endpoints** (see also ``/docs`` when the server runs)
-    - ``GET /health`` — liveness.
+    - ``GET /health`` — liveness (process only; does not query the database).
+    - ``GET /ready`` — readiness: database connectivity, pgvector extension, ``chunks`` table.
     - ``GET /config/active-profile`` — active YAML profile and effective search params.
     - ``POST /ingest/chunks`` — upsert chunks with demo embeddings (deterministic, no external API).
     - ``POST /retrieve`` — k-NN order by cosine distance (pgvector ``<=>``).
@@ -26,8 +27,10 @@ from typing import Any, AsyncIterator
 
 import asyncpg
 from fastapi import FastAPI, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, field_validator
 
+from rag import __version__ as _package_version
 from rag.config_loader import AppYamlConfig, load_config_defaults
 from rag.embeddings import demo_embedding
 from rag.models_config import EmbeddingModelConfig
@@ -59,7 +62,42 @@ app = FastAPI(
     title="rag-pgvector-tuning",
     description="RAG retrieval demo: PostgreSQL pgvector + YAML-driven search parameter tuning.",
     lifespan=lifespan,
+    version=_package_version,
 )
+
+
+@app.middleware("http")
+async def optional_api_key_middleware(request: Request, call_next):
+    """When ``RAG_API_KEY`` is set, require credentials on all routes except probes.
+
+    If ``Authorization`` starts with ``Bearer `` (case-insensitive), only the Bearer
+    token is accepted (empty token after the prefix is rejected; ``X-API-Key`` is
+    not consulted). Otherwise ``X-API-Key`` alone may authenticate.
+    """
+    path = request.url.path
+    if path in ("/health", "/ready"):
+        return await call_next(request)
+    expected = _settings.api_key
+    if expected is None:
+        return await call_next(request)
+    auth_header = request.headers.get("Authorization") or ""
+    lower = auth_header.lower()
+    if lower.startswith("bearer "):
+        bearer_token = auth_header[7:].strip()
+        if not bearer_token:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "invalid or missing API key"},
+            )
+        candidate = bearer_token
+    else:
+        candidate = request.headers.get("X-API-Key")
+    if candidate != expected:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "invalid or missing API key"},
+        )
+    return await call_next(request)
 
 
 def bundle(req: Request) -> AppYamlConfig:
@@ -78,6 +116,45 @@ def pool(req: Request) -> asyncpg.Pool:
 async def health() -> dict[str, str]:
     """Return a simple status object for load balancers or smoke tests."""
     return {"status": "ok"}
+
+
+@app.get("/ready", response_model=None)
+async def ready(req: Request) -> JSONResponse | dict[str, Any]:
+    """Verify PostgreSQL, pgvector extension, and migrated ``chunks`` table (use for readiness probes)."""
+    checks: dict[str, bool] = {"database": False, "pgvector": False, "chunks_table": False}
+    pl = pool(req)
+    try:
+        async with pl.acquire() as conn:
+            await conn.fetchval("SELECT 1")
+            checks["database"] = True
+            ext_ok = await conn.fetchval(
+                "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector')"
+            )
+            checks["pgvector"] = bool(ext_ok)
+            tbl_ok = await conn.fetchval("SELECT to_regclass('public.chunks') IS NOT NULL")
+            checks["chunks_table"] = bool(tbl_ok)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("ready check failed: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "checks": checks,
+                "detail": str(exc),
+            },
+        )
+
+    failed = [name for name, ok in checks.items() if not ok]
+    if failed:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "checks": checks,
+                "detail": f"checks failed: {', '.join(failed)}",
+            },
+        )
+    return {"status": "ready", "checks": checks}
 
 
 @app.get("/config/active-profile")
@@ -107,6 +184,15 @@ class ChunkIn(BaseModel):
     chunk_index: int = 0
     content: str
 
+    @field_validator("content")
+    @classmethod
+    def _limit_content_len(cls, v: str) -> str:
+        limit = _settings.max_chunk_content_chars
+        if len(v) > limit:
+            msg = f"content exceeds maximum length ({limit} characters)"
+            raise ValueError(msg)
+        return v
+
 
 class IngestPayload(BaseModel):
     """Batch of chunks to embed and upsert into ``chunks``."""
@@ -122,6 +208,12 @@ async def ingest_chunks(req: Request, body: IngestPayload) -> dict[str, Any]:
     telemetry: TelemetryCollector = req.app.state.telemetry
     if not body.chunks:
         raise HTTPException(status_code=400, detail="chunks must be non-empty")
+    max_chunks = _settings.max_ingest_chunks_per_request
+    if len(body.chunks) > max_chunks:
+        raise HTTPException(
+            status_code=413,
+            detail=f"chunks length {len(body.chunks)} exceeds limit {max_chunks} (configure MAX_INGEST_CHUNKS_PER_REQUEST)",
+        )
     t0 = time.perf_counter()
     vals: list[tuple[Any, ...]] = []
     for row in body.chunks:
@@ -153,8 +245,12 @@ async def ingest_chunks(req: Request, body: IngestPayload) -> dict[str, Any]:
             failures=len(vals),
             tenant_id=body.chunks[0].tenant_id,
         )
+        logger.warning("ingest failed: %s", exc, exc_info=True)
         logger.warning("%s", TelemetryCollector.format_log_line(payload))
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=400,
+            detail="Ingest failed (see server logs).",
+        ) from None
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
     payload = telemetry.emit_ingest(
         batch_size=len(vals),
@@ -174,6 +270,15 @@ class RetrievePayload(BaseModel):
     tenant_id: str | None = None
     source_type: str | None = None
 
+    @field_validator("query")
+    @classmethod
+    def _limit_query_len(cls, v: str) -> str:
+        limit = _settings.max_retrieve_query_chars
+        if len(v) > limit:
+            msg = f"query exceeds maximum length ({limit} characters)"
+            raise ValueError(msg)
+        return v
+
 
 @app.post("/retrieve")
 async def retrieve(req: Request, body: RetrievePayload) -> dict[str, Any]:
@@ -189,24 +294,34 @@ async def retrieve(req: Request, body: RetrievePayload) -> dict[str, Any]:
     query_vec = demo_embedding(body.query, cfg_e.embedding_dim)
     vec_lit = "[" + ",".join(f"{float(x):.8f}" for x in query_vec) + "]"
 
-    conditions: list[str] = []
-    params: list[Any] = [vec_lit, body.k]
-    i = 3
-    if body.tenant_id is not None:
-        conditions.append(f"tenant_id = ${i}")
-        params.append(body.tenant_id)
-        i += 1
-    if body.source_type is not None:
-        conditions.append(f"source_type = ${i}")
-        params.append(body.source_type)
-        i += 1
-    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-
-    sql = f"""
+    sql_no_filter = """
         SELECT id, doc_id, chunk_index, content,
                1 - (embedding <=> $1::vector) AS cosine_sim
         FROM chunks
-        {where}
+        ORDER BY embedding <=> $1::vector
+        LIMIT $2
+    """
+    sql_tenant_only = """
+        SELECT id, doc_id, chunk_index, content,
+               1 - (embedding <=> $1::vector) AS cosine_sim
+        FROM chunks
+        WHERE tenant_id = $3
+        ORDER BY embedding <=> $1::vector
+        LIMIT $2
+    """
+    sql_source_only = """
+        SELECT id, doc_id, chunk_index, content,
+               1 - (embedding <=> $1::vector) AS cosine_sim
+        FROM chunks
+        WHERE source_type = $3
+        ORDER BY embedding <=> $1::vector
+        LIMIT $2
+    """
+    sql_both_filters = """
+        SELECT id, doc_id, chunk_index, content,
+               1 - (embedding <=> $1::vector) AS cosine_sim
+        FROM chunks
+        WHERE tenant_id = $3 AND source_type = $4
         ORDER BY embedding <=> $1::vector
         LIMIT $2
     """
@@ -214,7 +329,20 @@ async def retrieve(req: Request, body: RetrievePayload) -> dict[str, Any]:
     async with pl.acquire() as conn:
         async with conn.transaction():
             await apply_search_session_params(conn, profile, tuner.overrides)
-            rows = await conn.fetch(sql, *params)
+            if body.tenant_id is None and body.source_type is None:
+                rows = await conn.fetch(sql_no_filter, vec_lit, body.k)
+            elif body.tenant_id is not None and body.source_type is None:
+                rows = await conn.fetch(sql_tenant_only, vec_lit, body.k, body.tenant_id)
+            elif body.tenant_id is None and body.source_type is not None:
+                rows = await conn.fetch(sql_source_only, vec_lit, body.k, body.source_type)
+            else:
+                rows = await conn.fetch(
+                    sql_both_filters,
+                    vec_lit,
+                    body.k,
+                    body.tenant_id,
+                    body.source_type,
+                )
 
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
     payload = telemetry.emit_retrieve(
@@ -265,12 +393,19 @@ async def patch_runtime_search(req: Request, body: RuntimeSearchPatch) -> dict[s
     if body.clear_overrides:
         tuner.clear_overrides()
         return {"overrides": tuner.overrides, "cleared": True}
-    if body.hnsw_ef_search is not None:
-        assert_param_whitelisted("hnsw.ef_search", g)
-        tuner.set_override(hnsw_ef_search=body.hnsw_ef_search)
-    if body.ivfflat_probes is not None:
-        assert_param_whitelisted("ivfflat.probes", g)
-        tuner.set_override(ivfflat_probes=body.ivfflat_probes)
+    try:
+        if body.hnsw_ef_search is not None:
+            assert_param_whitelisted("hnsw.ef_search", g)
+            tuner.set_override(hnsw_ef_search=body.hnsw_ef_search)
+        if body.ivfflat_probes is not None:
+            assert_param_whitelisted("ivfflat.probes", g)
+            tuner.set_override(ivfflat_probes=body.ivfflat_probes)
+    except ValueError as exc:
+        logger.warning("runtime-search patch rejected: %s", exc)
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid runtime search override.",
+        ) from None
     return {"overrides": tuner.overrides}
 
 
@@ -290,7 +425,14 @@ async def tuner_step(
     """Run :meth:`rag.tuner.PhysicalTuner.maybe_apply_from_recommendation` (optional apply)."""
     tuner: PhysicalTuner = req.app.state.tuner
     telemetry: TelemetryCollector = req.app.state.telemetry
-    return tuner.maybe_apply_from_recommendation(telemetry, auto_apply=auto_apply)
+    try:
+        return tuner.maybe_apply_from_recommendation(telemetry, auto_apply=auto_apply)
+    except ValueError as exc:
+        logger.warning("tuner step rejected: %s", exc)
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid tuner operation.",
+        ) from None
 
 
 @app.post("/telemetry/ingest-backlog/clear")

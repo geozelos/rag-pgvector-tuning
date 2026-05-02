@@ -35,6 +35,14 @@ def _run() -> None:
         h = client.get("/health")
         assert h.status_code == 200
 
+        rd = client.get("/ready")
+        assert rd.status_code == 200, rd.text
+        ready_body = rd.json()
+        assert ready_body["status"] == "ready"
+        assert ready_body["checks"]["database"] is True
+        assert ready_body["checks"]["pgvector"] is True
+        assert ready_body["checks"]["chunks_table"] is True
+
         ingest = client.post(
             "/ingest/chunks",
             json={

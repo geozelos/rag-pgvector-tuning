@@ -6,172 +6,188 @@ If you discover a security issue in this codebase, please report it **privately*
 
 ---
 
-## OWASP Top 10 (2021) — review of this codebase
+## OWASP baseline
 
-Mappings are **qualitative** (code inspection). Run **`pip-audit`**, **Dependabot**, or **`uv lock` + OSV** regularly for **known vulnerable dependencies** (A06); results change over time.
+Mappings are **qualitative** (code inspection). Earlier revisions used **OWASP Top 10 (2021)** numbering; this document is maintained against **[OWASP Top 10:2025](https://owasp.org/Top10/2025/en/)**. Dependency advisories change continuously—run **`pip-audit`** (see CI and commands below), **Dependabot**, or **`uv.lock`** + OSV regularly.
 
-### A01: Broken Access Control — **high (if exposed beyond localhost)**
+---
+
+## OWASP Top 10:2025 — review of this codebase
+
+### A01:2025 — Broken Access Control — **high (if exposed beyond localhost)**
 
 **Findings**
 
-- **No authentication or authorization** on any HTTP route (`src/rag/main.py`). Any client that can reach the API can:
-  - **Ingest or overwrite** chunks (global corpus), including other tenants’ `(doc_id, chunk_index)` keys.
-  - **Retrieve** vectors and text. **`tenant_id` / `source_type` are optional filters** — omitting them returns hits across **all** rows (`/retrieve` builds `WHERE` only when filters are set).
-  - **Change global runtime tuning** (`PATCH /config/runtime-search`), **clear telemetry state**, **drive the tuner** (`/tuner/*`).
-- **OpenAPI `/docs` and `/redoc`** expose the full attack surface and simplify abuse.
-- There is **no per-tenant API key, JWT, or RBAC**.
+- **`tenant_id` / `source_type` are optional filters** on `POST /retrieve` — omitting them returns hits across **all** rows (`src/rag/main.py`).
+- Any authenticated caller (when **`RAG_API_KEY`** / **`API_KEY`** is set) shares **one global secret** — **no RBAC**, **no per-tenant API keys**, **no JWT scopes**. With **no API key configured**, every route except **`GET /health`** and **`GET /ready`** remains **anonymous full access**.
+- **`GET /health`** and **`GET /ready`** are **always unauthenticated** (for probes); **`/ready`** does not grant data access but confirms DB/pgvector/table readiness.
+- **Ingest** can **overwrite** chunks by `(doc_id, chunk_index)` for **any** declared tenant string — multi-tenancy is **client-declared**, not cryptographically enforced.
+- **`PATCH /config/runtime-search`**, **`POST /tuner/*`**, **`POST /telemetry/ingest-backlog/clear`** affect **global** tuning/telemetry state for the process.
+- **OpenAPI `/docs` and `/redoc`** expose the attack surface.
 
 **Mitigations (production-oriented)**
 
-- Put the API **behind an API gateway / reverse proxy** with **mTLS or OAuth2/JWT**, **per-route scopes**, and **network policies** (only trusted callers).
-- Enforce **tenant isolation** in the application layer (required tenant context + server-side checks, or row-level security in PostgreSQL).
-- **Disable or protect** `/docs` in production (or serve only on an internal network).
+- Put the API behind an **API gateway / reverse proxy** with **mTLS or OAuth2/JWT**, **per-route scopes**, and **network policies**.
+- Enforce **tenant isolation** (required tenant context + server-side checks, or PostgreSQL row-level security).
+- **Disable or protect `/docs`** on untrusted networks.
 
 ---
 
-### A02: Cryptographic Failures — **medium (deployment-dependent)**
+### A02:2025 — Security Misconfiguration — **high (default stack)**
 
 **Findings**
 
-- **`DATABASE_URL`** may contain **plain-text credentials** (`.env`, Docker Compose env). Default compose uses a **weak, documented password** (`rag` / `rag`) — fine for local dev, **not** for the internet.
-- **No TLS** is configured in the application; HTTPS is assumed to be **terminated** elsewhere (reverse proxy / load balancer) if needed.
-- **No encryption-at-rest** is configured here (rely on disk encryption / managed DB).
+- **Postgres** published on host port **5433** in `docker-compose.yml` — avoid unintended exposure beyond localhost.
+- **Default DB credentials** (`rag` / `rag`) are documented for dev — **not** for the internet.
+- **No explicit security headers, rate limiting, or CORS allowlist** in application code (FastAPI defaults only).
+- **Positive control:** **`GET /ready`** checks connectivity, **`vector`** extension, and **`public.chunks`** — helps orchestrators avoid routing traffic before migrations (does **not** replace auth).
 
 **Mitigations**
 
-- Use **secrets management** (env from vault, not committed files); **rotate** DB passwords.
-- Terminate **TLS** at the edge; use **`sslmode=require`/`verify-full`** for Postgres client connections where supported.
+- Bind services to **internal networks** in real deployments; **do not** expose Postgres publicly.
+- Add **rate limiting** (proxy or middleware), **security headers**, and explicit **CORS** when browser clients exist.
+- Use **secrets management** and **strong** credentials outside demos.
 
 ---
 
-### A03: Injection — **lower for SQL; other inputs still matter**
+### A03:2025 — Software Supply Chain Failures — **ongoing**
 
 **Findings**
 
-- **SQL:** Ingest uses **parameterized** `executemany` with `$1…$6` placeholders. Retrieve builds a **fixed** `WHERE` template and passes filter values as **bound parameters** (`$3`, …) — **not** string-concatenated user text into SQL values. **Vector literal** for search is derived from server-side embedding of `query`, not raw user SQL.
-- **YAML:** Config uses **`yaml.safe_load`** (`src/rag/config_loader.py`) — avoids arbitrary object construction from YAML.
-- **Command execution:** `scripts/migrate.py` does not shell out with user input.
+- Dependencies are pinned in **`uv.lock`**; disclosed CVEs can appear at any time.
+- **Docker images** should use **pinned bases** and be scanned (**Trivy**, **Grype**, etc.) before production deploy—recommended **outside** this minimal CI.
+
+**Mitigations**
+
+- CI runs **`pip-audit`** on exported locked runtime dependencies and **Bandit** on `src/rag` and `scripts` (see `.github/workflows/ci.yml`).
+- Enable **Dependabot** or **Renovate**; **rebuild** images after upgrades.
+
+Example (matches CI; omit **`process substitution`** for portability):
+
+```bash
+uv sync --group dev
+uv export --frozen --no-dev --no-emit-project --no-hashes -o /tmp/deps-audit.txt
+uv run pip-audit -r /tmp/deps-audit.txt
+```
+
+---
+
+### A04:2025 — Cryptographic Failures — **medium (deployment-dependent)**
+
+**Findings**
+
+- **`DATABASE_URL`** may contain **plain-text credentials** (`.env`, Compose env).
+- **No TLS** in the app—terminate **HTTPS** at the edge if needed.
+- **No encryption-at-rest** configured here (use disk encryption / managed DB).
+
+**Mitigations**
+
+- Store secrets outside git; **rotate** passwords.
+- **`sslmode=require`/`verify-full`** for Postgres clients where supported.
+
+---
+
+### A05:2025 — Injection — **lower for SQL; availability still matters**
+
+**Findings**
+
+- **SQL:** Ingest uses **parameterized** `executemany`; retrieve uses a **fixed** SQL shell with **bound parameters** for filters. Embedding literals come from **server-side** embedding of user text, not concatenated SQL from raw input.
+- **YAML:** **`yaml.safe_load`** (`src/rag/config_loader.py`).
+- **`scripts/migrate.py`** does not invoke shells with user-controlled strings.
 
 **Residual risks**
 
-- Very large **ingest batches** (unbounded list length in `IngestPayload`) can stress **memory and DB** (availability / DoS), not classic SQLi.
+- **`POST /ingest/chunks`** batch size is **capped** by **`MAX_INGEST_CHUNKS_PER_REQUEST`** (default **500**, HTTP **413**) — reduces memory/DB abuse vs unbounded batches; large **`content`** strings per row can still stress resources unless further bounded.
 
 **Mitigations**
 
-- Cap **`chunks` length and row field sizes** (Pydantic `max_length`, max batch size).
+- Add Pydantic **`max_length`** on text fields if you need tighter bounds.
 
 ---
 
-### A04: Insecure Design — **high (by intent for a demo)**
+### A06:2025 — Insecure Design — **high (by intent for a demo)**
 
 **Findings**
 
-- **Global in-memory tuner / telemetry** — any caller affects **shared** process state.
-- **Multi-tenancy is client-declared** (`tenant_id` on ingest/filters), not cryptographically enforced.
-- **Demo embeddings** are deterministic hashes — **not** a security boundary; they are for **learning**, not production semantic search.
-
-**Mitigations**
-
-- Redesign for production: **authn/authz**, **quotas**, **auditing**, **separate tuning admin API** from data plane.
-
----
-
-### A05: Security Misconfiguration — **high (default stack)**
-
-**Findings**
-
-- **Postgres published** on host port **5433** in `docker-compose.yml` — broad **localhost** exposure; on misconfigured hosts this can widen risk.
-- **Default credentials** and **debug-grade** logging (e.g. ingest failures may return **`str(exc)`** to the client in `HTTPException`) can **leak internal errors**.
-- **No security headers, rate limiting, or CORS policy** defined in code (FastAPI defaults only).
-
-**Mitigations**
-
-- **Bind DB** to internal networks only in real deployments; **do not** expose Postgres publicly.
-- Map **exceptions** to **generic** client messages; log details **server-side** only.
-- Add **rate limiting** (proxy or middleware), **security headers**, and explicit **CORS** allowlists if browser clients exist.
-
----
-
-### A06: Vulnerable and Outdated Components — **ongoing**
-
-**Findings**
-
-- Dependencies are pinned in **`uv.lock`**; they can still have **disclosed CVEs** at any time.
-
-**Mitigations**
-
-- Run regularly, e.g.:
-
-  ```bash
-  uv tool run pip-audit -r <(uv export --no-dev --frozen)
-  ```
-
-  Or enable **Dependabot / Renovate** on the repository. **Rebuild** images after upgrades.
-
----
-
-### A07: Identification and Authentication Failures — **critical gap (if network-exposed)**
-
-**Findings**
-
-- **No login, sessions, or API keys.** Every endpoint is **anonymous full access**.
-
-**Mitigations**
-
-- Add **OAuth2**, **API keys**, or **mTLS**; validate **every mutating and sensitive read** path.
-
----
-
-### A08: Software and Data Integrity Failures — **low in-repo**
-
-**Findings**
-
-- No auto-update or unsigned deserialization paths in the app. **Docker images** should be built from **pinned base images** and scanned in CI (**Trivy**, **Grype**, etc.).
-
-**Mitigations**
-
-- Sign images / use digest pins; verify supply chain in CI.
-
----
-
-### A09: Security Logging and Monitoring Failures — **medium**
-
-**Findings**
-
-- **Structured telemetry** exists for ingest/retrieve (**good for ops**), but there is **no security event stream** (auth failures, policy denials), and **no centralized SIEM** integration.
-
-**Mitigations**
-
-- Log **client identity**, **decisions**, and **anomalies**; forward to your logging platform.
-
----
-
-### A10: Server-Side Request Forgery (SSRF) — **low**
-
-**Findings**
-
-- The app does **not** fetch user-supplied URLs in `src/rag/`. **No obvious SSRF** surface in the current retrieval/ingest path.
+- **Global in-memory tuner / telemetry** — callers affect **shared** process state.
+- **Demo embeddings** are deterministic hashes — **not** a security boundary for semantic secrecy.
+- **SSRF:** The app does **not** fetch user-supplied URLs today.
 
 **Watchouts**
 
-- If you later add **“fetch URL and embed”**, validate schemes/hosts and **block** internal networks.
+- Future features such as **“fetch URL and embed”** need strict URL validation (scheme/host allowlists, block RFC1918/metadata URLs).
+
+**Mitigations**
+
+- Separate **admin/tuning** plane from **data plane** in production; **quotas**, **auditing**, real identity model.
+
+---
+
+### A07:2025 — Authentication Failures — **critical gap when API key unset (if network-exposed)**
+
+**Findings**
+
+- With **`RAG_API_KEY`** / **`API_KEY`** unset (demo default), there are **no sessions or per-user credentials** — full anonymous access except probe routes.
+- With API key **set**, clients may send **`Authorization: Bearer <token>`** or **`X-API-Key`** alone. If the header uses the Bearer prefix, **only** that token is validated (including rejecting an empty token); **`X-API-Key` is ignored** in that case — **no OAuth2**, **no MFA**, **no rotation story** in-app.
+
+**Mitigations**
+
+- Prefer **gateway-managed OAuth2/JWT**, **mTLS**, or **short-lived tokens** for production; treat the env-based shared secret as a **minimal** stub only.
+
+---
+
+### A08:2025 — Software or Data Integrity Failures — **low in-repo**
+
+**Findings**
+
+- No unsigned auto-update or arbitrary deserialization paths in core handlers.
+
+**Mitigations**
+
+- Sign releases / pin image digests; extend CI with container scanners when you publish images.
+
+---
+
+### A09:2025 — Security Logging and Alerting Failures — **medium**
+
+**Findings**
+
+- **Operational telemetry** exists for ingest/retrieve (`src/rag/telemetry.py`).
+- **401** responses from optional API-key middleware give a **minimal** auth signal but **no structured security audit stream** or SIEM integration.
+
+**Mitigations**
+
+- Log **identity**, **policy decisions**, and **anomalies** to your logging stack.
+
+---
+
+### A10:2025 — Mishandling of Exceptional Conditions — **medium**
+
+**Findings**
+
+- **`POST /ingest/chunks`** maps database failures to **`HTTPException(detail=str(exc))`** — may **leak internal errors** (driver messages, constraint names) to clients (`src/rag/main.py`).
+- **`GET /ready`** returns **`detail` strings** on failure paths for operators—typically lower risk than authenticated multi-tenant APIs but still worth generic messages if exposed broadly.
+
+**Mitigations**
+
+- Return **generic** messages to clients; log **`exc`** server-side only.
 
 ---
 
 ### Additional: Availability / abuse
 
-- **`POST /ingest/chunks`** has **no max batch**; large payloads can cause **CPU/memory** pressure (embedding + DB).
-- **`POST /retrieve`** caps **`k` ≤ 200** — reasonable.
-- **No global rate limit** — brute force or corpus scraping is trivial if the API is reachable.
+- **`POST /ingest/chunks`** batch length is **capped** (see **`MAX_INGEST_CHUNKS_PER_REQUEST`**); **`POST /retrieve`** caps **`k` ≤ 200**.
+- **No global rate limit** in-app — add at proxy or middleware if the API is reachable by untrusted clients.
 
 ---
 
 ## Quick hardening checklist (before any public deploy)
 
-1. **Authentication + authorization** on all routes; **require** tenant context where multi-tenant.
+1. **Authentication + authorization** stronger than a single optional shared secret; **require** tenant context where multi-tenant.
 2. **TLS** and **private networking** for API and database.
-3. **Remove or restrict `/docs`**, **generic error messages** to clients.
+3. **Remove or restrict `/docs`**; **generic error messages** to clients (**A10**).
 4. **Secrets** out of git; **strong** DB credentials; Postgres **not** on the public internet.
 5. **Rate limits** and **request/body size limits** (proxy + app).
-6. **Dependency + image scanning** on every release.
-7. **Disable** or protect **tuning/admin** endpoints from untrusted callers.
+6. **Dependency scanning** (CI **`pip-audit`**) + **static analysis** (**Bandit**) + image scanning on release (**Trivy**/similar).
+7. **Protect tuning/admin** endpoints from untrusted callers.
+8. **`GET /ready`** for readiness only — combine with auth and network controls, not instead of them.

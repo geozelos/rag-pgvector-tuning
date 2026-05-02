@@ -18,3 +18,29 @@ def test_settings_default_when_env_unset(monkeypatch: pytest.MonkeyPatch) -> Non
     s = Settings()
     assert "postgresql" in s.database_url
     assert "5433" in s.database_url or "5432" in s.database_url
+
+
+def test_settings_api_key_empty_string_becomes_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAG_API_KEY", "")
+    s = Settings()
+    assert s.api_key is None
+
+
+def test_settings_api_key_non_empty_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAG_API_KEY", "my-key")
+    s = Settings()
+    assert s.api_key == "my-key"
+
+
+def test_settings_max_ingest_chunks_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("MAX_INGEST_CHUNKS_PER_REQUEST", raising=False)
+    s = Settings()
+    assert s.max_ingest_chunks_per_request == 500
+
+
+def test_settings_text_limits_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MAX_CHUNK_CONTENT_CHARS", "1024")
+    monkeypatch.setenv("MAX_RETRIEVE_QUERY_CHARS", "512")
+    s = Settings()
+    assert s.max_chunk_content_chars == 1024
+    assert s.max_retrieve_query_chars == 512

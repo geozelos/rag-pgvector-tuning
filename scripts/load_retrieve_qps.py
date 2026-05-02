@@ -2,7 +2,8 @@
 """
 Drive POST /retrieve at a steady average QPS to populate tuner telemetry or stress latency.
 
-Requires dev dependencies (httpx): ``uv sync --group dev``.
+Uses **httpx** from the default install (`uv sync`). For convenience you can use ``uv sync --group dev``
+alongside tests.
 """
 
 from __future__ import annotations

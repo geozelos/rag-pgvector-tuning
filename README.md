@@ -233,14 +233,26 @@ curl -s -X PATCH http://127.0.0.1:8000/config/runtime-search \
   -d '{"clear_overrides": true}'
 ```
 
+## CLI (`rag-cli`)
+
+After **`uv sync`**, use the **`rag-cli`** entrypoint for JSON endpoints:
+
+```bash
+uv run rag-cli ingest --file chunks.json
+uv run rag-cli retrieve --query "What is ef_search?" --k 5 --tenant-id demo
+uv run rag-cli tune-step --auto-apply
+```
+
+Same via **`python -m rag.cli …`**. **`--base-url`** defaults to `http://127.0.0.1:8000` or **`RAG_BASE_URL`**; **`RAG_API_KEY`** / **`API_KEY`** supply **`X-API-Key`** when **`--api-key`** is omitted.
+
+See **`rag-cli --help`** and **`rag-cli <command> --help`**.
+
 ## Load generator (retrieve QPS)
 
 Use [`scripts/load_retrieve_qps.py`](scripts/load_retrieve_qps.py) to issue paced **`POST /retrieve`** traffic so **`/telemetry/summary`** and **`/tuner/recommend`** see sustained latency samples (hash embeddings make latency an easy knob to observe).
 
-Requires **httpx** from the dev group:
-
 ```bash
-uv sync --group dev
+uv sync
 uv run python scripts/load_retrieve_qps.py --qps 15 --duration 45
 ```
 
@@ -305,7 +317,7 @@ uv run pytest tests/ -q --cov=rag --cov-branch
 - `Dockerfile` — API image (runs migrations then uvicorn)
 - `docker-compose.yml` — Postgres (pgvector) + API
 - `docker/entrypoint.sh` — migrate + start server
-- `src/rag/` — FastAPI app, tuner, telemetry, config loading
+- `src/rag/` — FastAPI app, tuner, telemetry, config loading; [`cli.py`](src/rag/cli.py) provides **`rag-cli`**
 - `migrations/` — numbered SQL files applied by `scripts/migrate.py`
 - `scripts/migrate.py` — idempotent migration runner
 - `scripts/load_retrieve_qps.py` — paced `/retrieve` load generator for tuner demos (needs `uv sync --group dev`)

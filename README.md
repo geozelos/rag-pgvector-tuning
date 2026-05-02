@@ -306,6 +306,7 @@ uv run pytest tests/ -q --cov=rag --cov-branch
 ```
 
 - **Unit and API tests** use a **mocked PostgreSQL pool** (no Docker required).
+- **OpenAPI contract:** [`tests/fixtures/openapi.json`](tests/fixtures/openapi.json) must match `app.openapi()` (see [`tests/test_openapi_contract.py`](tests/test_openapi_contract.py)). After intentional route or schema changes, refresh the golden file with `UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest tests/test_openapi_contract.py -q` and commit the updated JSON (minor drift after `fastapi` / `pydantic` upgrades is normal).
 - **Integration tests** are marked `@pytest.mark.integration`: they connect to PostgreSQL (default `postgresql://rag:rag@localhost:5433/rag`). Start the DB with `docker compose up -d postgres`, or set `INTEGRATION_DATABASE_URL`. If the server is unreachable, the integration test is **skipped**.
 
 ### Continuous integration

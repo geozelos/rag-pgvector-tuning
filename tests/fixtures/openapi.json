@@ -1,0 +1,488 @@
+{
+  "components": {
+    "schemas": {
+      "ChunkIn": {
+        "description": "One text chunk and metadata; ``doc_id`` + ``chunk_index`` form the upsert key.",
+        "properties": {
+          "chunk_index": {
+            "default": 0,
+            "title": "Chunk Index",
+            "type": "integer"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "doc_id": {
+            "title": "Doc Id",
+            "type": "string"
+          },
+          "source_type": {
+            "default": "doc",
+            "title": "Source Type",
+            "type": "string"
+          },
+          "tenant_id": {
+            "default": "default",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "doc_id",
+          "content"
+        ],
+        "title": "ChunkIn",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "IngestPayload": {
+        "description": "Batch of chunks to embed and upsert into ``chunks``.",
+        "properties": {
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/ChunkIn"
+            },
+            "title": "Chunks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "chunks"
+        ],
+        "title": "IngestPayload",
+        "type": "object"
+      },
+      "RetrievePayload": {
+        "description": "Search request: embed ``query`` with the same demo function used at ingest.",
+        "properties": {
+          "k": {
+            "default": 10,
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "K",
+            "type": "integer"
+          },
+          "query": {
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Type"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "RetrievePayload",
+        "type": "object"
+      },
+      "RuntimeSearchPatch": {
+        "description": "Patch in-memory overrides; values are clamped by guardrails when applied via tuner APIs.",
+        "properties": {
+          "clear_overrides": {
+            "default": false,
+            "title": "Clear Overrides",
+            "type": "boolean"
+          },
+          "hnsw_ef_search": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hnsw Ef Search"
+          },
+          "ivfflat_probes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ivfflat Probes"
+          }
+        },
+        "title": "RuntimeSearchPatch",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "RAG retrieval demo: PostgreSQL pgvector + YAML-driven search parameter tuning.",
+    "title": "rag-pgvector-tuning",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/config/active-profile": {
+      "get": {
+        "description": "Expose ``active_profile`` from ``config/profiles.yaml`` and effective HNSW/IVF params.",
+        "operationId": "active_profile_config_active_profile_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Active Profile Config Active Profile Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Active Profile"
+      }
+    },
+    "/config/runtime-search": {
+      "patch": {
+        "description": "Set or clear ``hnsw_ef_search`` / ``ivfflat_probes`` overrides (must be whitelisted in YAML).",
+        "operationId": "patch_runtime_search_config_runtime_search_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeSearchPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Patch Runtime Search Config Runtime Search Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Runtime Search"
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Return a simple status object for load balancers or smoke tests.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/ingest/chunks": {
+      "post": {
+        "description": "Upsert chunks: compute demo vectors (see ``rag.embeddings``), INSERT ... ON CONFLICT.",
+        "operationId": "ingest_chunks_ingest_chunks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ingest Chunks Ingest Chunks Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingest Chunks"
+      }
+    },
+    "/ready": {
+      "get": {
+        "description": "Verify PostgreSQL, pgvector extension, and migrated ``chunks`` table (use for readiness probes).",
+        "operationId": "ready_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ready"
+      }
+    },
+    "/retrieve": {
+      "post": {
+        "description": "Top-``k`` nearest neighbors by pgvector distance; applies session search params in a transaction.",
+        "operationId": "retrieve_retrieve_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetrievePayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Retrieve Retrieve Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retrieve"
+      }
+    },
+    "/telemetry/ingest-backlog/clear": {
+      "post": {
+        "description": "Reset the heuristic ingest-backlog counter used by the tuner (dev/demo helper).",
+        "operationId": "clear_ingest_backlog_telemetry_ingest_backlog_clear_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Clear Ingest Backlog Telemetry Ingest Backlog Clear Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Clear Ingest Backlog"
+      }
+    },
+    "/telemetry/summary": {
+      "get": {
+        "description": "Rolling-window ingest/retrieve stats from memory plus ``SELECT count(*)`` on ``chunks``.",
+        "operationId": "telemetry_summary_telemetry_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Telemetry Summary Telemetry Summary Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Telemetry Summary"
+      }
+    },
+    "/tuner/recommend": {
+      "post": {
+        "description": "Suggest increase/decrease/hold for search params from ``TelemetryCollector.summary()``.",
+        "operationId": "tuner_recommend_tuner_recommend_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Tuner Recommend Tuner Recommend Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Tuner Recommend"
+      }
+    },
+    "/tuner/step": {
+      "post": {
+        "description": "Run :meth:`rag.tuner.PhysicalTuner.maybe_apply_from_recommendation` (optional apply).",
+        "operationId": "tuner_step_tuner_step_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auto_apply",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Auto Apply",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Tuner Step Tuner Step Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Tuner Step"
+      }
+    }
+  }
+}

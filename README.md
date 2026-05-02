@@ -46,7 +46,7 @@ Then follow **[Step-by-step test guide](#path-1-docker-full-stack-api--postgres)
   ```bash
    export DATABASE_URL=postgresql://rag:rag@localhost:5433/rag
   ```
-   You can also copy `[.env.example](.env.example)` to `.env` and edit the URL (loaded by `src/rag/settings.py`).
+   You can also copy [.env.example](.env.example) to `.env` and edit the URL (loaded by `src/rag/settings.py`).
 3. **Install dependencies and run migrations**
   ```bash
    uv sync
@@ -105,7 +105,7 @@ If `docker compose` is not found, try **Docker Compose V2** via Docker Desktop o
      -H "Content-Type: application/json" \
      -d '{"query":"What is ef_search?","k":5,"tenant_id":"demo"}'
   ```
-   Save or remember `**duration_ms**` and `**hnsw_ef_search**` for comparison later.
+   Save or remember **`duration_ms`** and **`hnsw_ef_search`** for comparison later.
 6. **Inspect active profile** (YAML + overrides):
   ```bash
    curl -s http://127.0.0.1:8000/config/active-profile
@@ -116,7 +116,7 @@ If `docker compose` is not found, try **Docker Compose V2** via Docker Desktop o
      -H "Content-Type: application/json" \
      -d '{"hnsw_ef_search": 24}'
   ```
-8. **Retrieve again** with the **same body** as step 5. Compare `**duration_ms`** (and `hnsw_ef_search` should reflect `24` if within guardrails).
+8. **Retrieve again** with the **same body** as step 5. Compare **`duration_ms`** (and `hnsw_ef_search` should reflect `24` if within guardrails).
 9. **Clear overrides** (back to profile defaults):
   ```bash
    curl -s -X PATCH http://127.0.0.1:8000/config/runtime-search \
@@ -132,6 +132,9 @@ If `docker compose` is not found, try **Docker Compose V2** via Docker Desktop o
     curl -s -X POST http://127.0.0.1:8000/tuner/recommend
   ```
     Optional auto-apply step (understand guardrails first):
+  ```bash
+    curl -s -X POST "http://127.0.0.1:8000/tuner/step?auto_apply=false"
+  ```
 12. **Edit config without rebuilding:** change `config/profiles.yaml` or `config/tuner_guardrails.yaml`, then:
   ```bash
     docker compose restart api
@@ -293,10 +296,12 @@ Do not flip `active_profile` to IVFFlat in YAML unless your database actually ha
 
 ## Operations (readiness, ingest limits, optional API key)
 
-- `**GET /health`** — process liveness only (no database call). Use for “is the Python process up?” probes.
-- `**GET /ready**` — readiness after migrations: PostgreSQL connectivity, **pgvector** extension loaded, and the `**chunks`** table exists. HTTP **503** with a JSON body when something is missing or the DB is unreachable — suitable for orchestrators that should not send traffic until the DB is usable.
-- `**MAX_INGEST_CHUNKS_PER_REQUEST`** — caps how many items you may send in one `POST /ingest/chunks` body (default **500**). Larger batches receive HTTP **413**.
-- `**RAG_API_KEY`** — optional shared secret. If set in `.env`, every route except `**GET /health**` and `**GET /ready**` requires `Authorization: Bearer <key>` or `X-API-Key: <key>`. The same value may be supplied via `**API_KEY**` (pydantic-settings alias). Leave unset for local demos. See `**SECURITY.md**` for production posture beyond this stub.
+- **`GET /health`** — process liveness only (no database call). Use for “is the Python process up?” probes.
+- **`GET /ready`** — readiness after migrations: PostgreSQL connectivity, **pgvector** extension loaded, and the **`chunks`** table exists. HTTP **503** with a JSON body when something is missing or the DB is unreachable — suitable for orchestrators that should not send traffic until the DB is usable.
+- **`MAX_INGEST_CHUNKS_PER_REQUEST`** — caps how many items you may send in one `POST /ingest/chunks` body (default **500**). Larger batches receive HTTP **413**.
+- **`RAG_API_KEY`** — optional shared secret. If set in `.env`, every route except **`GET /health`** and **`GET /ready`** requires `Authorization: Bearer <key>` or `X-API-Key: <key>`. The same value may be supplied via **`API_KEY`** (pydantic-settings alias). Leave unset for local demos. See **[SECURITY.md](SECURITY.md)** for production posture beyond this stub.
+
+In **`docker-compose.yml`**, the **`api`** service defines a **`healthcheck`** against **`GET /ready`** so Compose can treat the container as healthy only after migrations and DB checks succeed (`start_period` allows time for first-boot migrations).
 
 ## Run tests
 
@@ -321,7 +326,7 @@ uv run pytest tests/ -q --cov=rag --cov-branch
 - `src/rag/` — FastAPI app, tuner, telemetry, config loading; [`cli.py`](src/rag/cli.py) provides **`rag-cli`**
 - `migrations/` — numbered SQL files applied by `scripts/migrate.py`
 - `scripts/migrate.py` — idempotent migration runner
-- `scripts/load_retrieve_qps.py` — paced `/retrieve` load generator for tuner demos (needs `uv sync --group dev`)
+- `scripts/load_retrieve_qps.py` — paced `/retrieve` load generator for tuner demos (**`uv sync`** includes **httpx**; use **`uv sync --group dev`** when running pytest alongside)
 - `tests/` — pytest (tuner, API with mocked DB, optional integration against real Postgres)
 
 ## License

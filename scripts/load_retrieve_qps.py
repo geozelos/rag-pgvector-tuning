@@ -2,8 +2,7 @@
 """
 Drive POST /retrieve at a steady average QPS to populate tuner telemetry or stress latency.
 
-Uses **httpx** from the default install (`uv sync`). For convenience you can use ``uv sync --group dev``
-alongside tests.
+Uses **httpx** from the default install (**`uv sync`**). Use **`uv sync --group dev`** when you also run tests locally.
 """
 
 from __future__ import annotations
@@ -121,7 +120,7 @@ Examples:
   %(prog)s --base-url http://127.0.0.1:8000 --query "latency probe" --qps 5 --duration 15
   %(prog)s --api-key "$RAG_API_KEY" --tenant-id demo --qps 10 --duration 60 --json
 
-Requires: uv sync --group dev (httpx).
+Requires: uv sync (httpx is a runtime dependency).
 """,
     )
     parser.add_argument(

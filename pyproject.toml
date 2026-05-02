@@ -1,6 +1,6 @@
 [project]
 name = "rag-pgvector-tuning"
-version = "0.1.0"
+version = "1.1.0"
 description = "Learn RAG retrieval with PostgreSQL pgvector: ingest, ANN search, and YAML-driven HNSW/IVFFlat runtime tuning (FastAPI demo, no API keys)."
 readme = "README.md"
 license = { text = "MIT" }

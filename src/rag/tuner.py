@@ -46,7 +46,8 @@ class PhysicalTuner:
         self.profiles = profiles
         self.guardrails = guardrails
         self.overrides = RuntimeOverrides()
-        self.last_change_mono: float = 0.0
+        # ``None`` means "never applied"; ``0.0`` would treat hosts with ``monotonic() < cooldown`` as still cooling down.
+        self.last_change_mono: float | None = None
         self.pre_change_latency_p99_snapshot: float | None = None
         self.last_reason: str | None = None
         self.last_recommendation: dict[str, Any] | None = None
@@ -90,6 +91,8 @@ class PhysicalTuner:
             raise ValueError(msg)
 
     def _cooldown_ok(self) -> bool:
+        if self.last_change_mono is None:
+            return True
         return (
             time.monotonic() - self.last_change_mono
             >= self.guardrails.cooldown_seconds_between_changes

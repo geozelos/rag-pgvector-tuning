@@ -18,6 +18,8 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql://rag:rag@localhost:5433/rag"
     max_ingest_chunks_per_request: int = Field(default=500, ge=1)
+    max_chunk_content_chars: int = Field(default=500_000, ge=1)
+    max_retrieve_query_chars: int = Field(default=32_768, ge=1)
     api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("RAG_API_KEY", "API_KEY"),

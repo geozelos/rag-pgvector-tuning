@@ -8,6 +8,9 @@ import pytest
 from starlette.testclient import TestClient
 
 
+from rag.config_loader import AppYamlConfig
+
+
 def test_health_ok(http_client_mock_db: tuple[TestClient, object]) -> None:
     client, _conn = http_client_mock_db
     r = client.get("/health")
@@ -173,7 +176,7 @@ def test_ingest_db_error_400(http_client_mock_db: tuple[TestClient, object]) -> 
         },
     )
     assert r.status_code == 400
-    assert "forced db error" in r.json()["detail"]
+    assert r.json()["detail"] == "Ingest failed (see server logs)."
 
 
 def test_retrieve_returns_results(http_client_mock_db: tuple[TestClient, object]) -> None:
@@ -264,11 +267,82 @@ def test_tuner_recommend_and_step(http_client_mock_db: tuple[TestClient, object]
     assert step.status_code == 200
 
 
+def test_tuner_step_valueerror_returns_400(
+    http_client_mock_db: tuple[TestClient, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _conn = http_client_mock_db
+    tuner = client.app.state.tuner
+
+    def _boom(*_a: object, **_k: object) -> None:
+        raise ValueError("simulated")
+
+    monkeypatch.setattr(tuner, "maybe_apply_from_recommendation", _boom)
+    r = client.post("/tuner/step", params={"auto_apply": False})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Invalid tuner operation."
+
+
 def test_patch_runtime_ivfflat_probes(http_client_mock_db: tuple[TestClient, object]) -> None:
     client, _conn = http_client_mock_db
     r = client.patch("/config/runtime-search", json={"ivfflat_probes": 12})
     assert r.status_code == 200
     assert r.json()["overrides"]["ivfflat_probes"] == 12
+
+
+def test_patch_runtime_hnsw_out_of_bounds(http_client_mock_db: tuple[TestClient, object]) -> None:
+    client, _conn = http_client_mock_db
+    r = client.patch("/config/runtime-search", json={"hnsw_ef_search": 8})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Invalid runtime search override."
+
+
+def test_patch_runtime_ivfflat_probes_out_of_bounds(http_client_mock_db: tuple[TestClient, object]) -> None:
+    client, _conn = http_client_mock_db
+    r = client.patch("/config/runtime-search", json={"ivfflat_probes": 99})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Invalid runtime search override."
+
+
+def test_patch_runtime_whitelist_denied(http_client_mock_db: tuple[TestClient, object]) -> None:
+    client, _conn = http_client_mock_db
+    b = client.app.state.bundle
+    client.app.state.bundle = AppYamlConfig(
+        embedding=b.embedding,
+        profiles_doc=b.profiles_doc,
+        guardrails=b.guardrails.model_copy(update={"whitelist_runtime_params": []}),
+    )
+    r = client.patch("/config/runtime-search", json={"hnsw_ef_search": 44})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Invalid runtime search override."
+
+
+def test_ingest_chunk_content_too_long(
+    http_client_mock_db: tuple[TestClient, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import rag.main as main_mod
+
+    monkeypatch.setattr(main_mod._settings, "max_chunk_content_chars", 5)
+    client, _conn = http_client_mock_db
+    r = client.post(
+        "/ingest/chunks",
+        json={"chunks": [{"doc_id": "d", "chunk_index": 0, "content": "123456"}]},
+    )
+    assert r.status_code == 422
+
+
+def test_retrieve_query_too_long(
+    http_client_mock_db: tuple[TestClient, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import rag.main as main_mod
+
+    monkeypatch.setattr(main_mod._settings, "max_retrieve_query_chars", 5)
+    client, conn = http_client_mock_db
+    conn.fetch = AsyncMock(return_value=[])
+    r = client.post("/retrieve", json={"query": "123456", "k": 3})
+    assert r.status_code == 422
 
 
 def test_clear_ingest_backlog(http_client_mock_db: tuple[TestClient, object]) -> None:

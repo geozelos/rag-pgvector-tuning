@@ -36,3 +36,11 @@ def test_settings_max_ingest_chunks_default(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.delenv("MAX_INGEST_CHUNKS_PER_REQUEST", raising=False)
     s = Settings()
     assert s.max_ingest_chunks_per_request == 500
+
+
+def test_settings_text_limits_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MAX_CHUNK_CONTENT_CHARS", "1024")
+    monkeypatch.setenv("MAX_RETRIEVE_QUERY_CHARS", "512")
+    s = Settings()
+    assert s.max_chunk_content_chars == 1024
+    assert s.max_retrieve_query_chars == 512

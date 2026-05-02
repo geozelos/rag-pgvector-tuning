@@ -28,7 +28,7 @@ from typing import Any, AsyncIterator
 import asyncpg
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from rag.config_loader import AppYamlConfig, load_config_defaults
 from rag.embeddings import demo_embedding
@@ -172,6 +172,15 @@ class ChunkIn(BaseModel):
     chunk_index: int = 0
     content: str
 
+    @field_validator("content")
+    @classmethod
+    def _limit_content_len(cls, v: str) -> str:
+        limit = _settings.max_chunk_content_chars
+        if len(v) > limit:
+            msg = f"content exceeds maximum length ({limit} characters)"
+            raise ValueError(msg)
+        return v
+
 
 class IngestPayload(BaseModel):
     """Batch of chunks to embed and upsert into ``chunks``."""
@@ -224,8 +233,12 @@ async def ingest_chunks(req: Request, body: IngestPayload) -> dict[str, Any]:
             failures=len(vals),
             tenant_id=body.chunks[0].tenant_id,
         )
+        logger.warning("ingest failed: %s", exc, exc_info=True)
         logger.warning("%s", TelemetryCollector.format_log_line(payload))
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=400,
+            detail="Ingest failed (see server logs).",
+        ) from None
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
     payload = telemetry.emit_ingest(
         batch_size=len(vals),
@@ -244,6 +257,15 @@ class RetrievePayload(BaseModel):
     k: int = Field(default=10, ge=1, le=200)
     tenant_id: str | None = None
     source_type: str | None = None
+
+    @field_validator("query")
+    @classmethod
+    def _limit_query_len(cls, v: str) -> str:
+        limit = _settings.max_retrieve_query_chars
+        if len(v) > limit:
+            msg = f"query exceeds maximum length ({limit} characters)"
+            raise ValueError(msg)
+        return v
 
 
 @app.post("/retrieve")
@@ -359,12 +381,19 @@ async def patch_runtime_search(req: Request, body: RuntimeSearchPatch) -> dict[s
     if body.clear_overrides:
         tuner.clear_overrides()
         return {"overrides": tuner.overrides, "cleared": True}
-    if body.hnsw_ef_search is not None:
-        assert_param_whitelisted("hnsw.ef_search", g)
-        tuner.set_override(hnsw_ef_search=body.hnsw_ef_search)
-    if body.ivfflat_probes is not None:
-        assert_param_whitelisted("ivfflat.probes", g)
-        tuner.set_override(ivfflat_probes=body.ivfflat_probes)
+    try:
+        if body.hnsw_ef_search is not None:
+            assert_param_whitelisted("hnsw.ef_search", g)
+            tuner.set_override(hnsw_ef_search=body.hnsw_ef_search)
+        if body.ivfflat_probes is not None:
+            assert_param_whitelisted("ivfflat.probes", g)
+            tuner.set_override(ivfflat_probes=body.ivfflat_probes)
+    except ValueError as exc:
+        logger.warning("runtime-search patch rejected: %s", exc)
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid runtime search override.",
+        ) from None
     return {"overrides": tuner.overrides}
 
 
@@ -384,7 +413,14 @@ async def tuner_step(
     """Run :meth:`rag.tuner.PhysicalTuner.maybe_apply_from_recommendation` (optional apply)."""
     tuner: PhysicalTuner = req.app.state.tuner
     telemetry: TelemetryCollector = req.app.state.telemetry
-    return tuner.maybe_apply_from_recommendation(telemetry, auto_apply=auto_apply)
+    try:
+        return tuner.maybe_apply_from_recommendation(telemetry, auto_apply=auto_apply)
+    except ValueError as exc:
+        logger.warning("tuner step rejected: %s", exc)
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid tuner operation.",
+        ) from None
 
 
 @app.post("/telemetry/ingest-backlog/clear")

@@ -315,6 +315,10 @@ uv run pytest tests/ -q --cov=rag --cov-branch
 - **Unit and API tests** use a **mocked PostgreSQL pool** (no Docker required).
 - **Integration tests** are marked `@pytest.mark.integration`: they connect to PostgreSQL (default `postgresql://rag:rag@localhost:5433/rag`). Start the DB with `docker compose up -d postgres`, or set `INTEGRATION_DATABASE_URL`. If the server is unreachable, the integration test is **skipped**.
 
+### Continuous integration
+
+[GitHub Actions](.github/workflows/ci.yml) runs **pytest with coverage** on every push and pull request, an **informational `pip-audit`** step on the locked runtime dependencies (does not fail the job), and a separate job against **PostgreSQL with pgvector** for integration tests.
+
 ## Project layout
 
 - `Dockerfile` — API image (runs migrations then uvicorn)

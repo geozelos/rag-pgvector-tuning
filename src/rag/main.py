@@ -260,24 +260,34 @@ async def retrieve(req: Request, body: RetrievePayload) -> dict[str, Any]:
     query_vec = demo_embedding(body.query, cfg_e.embedding_dim)
     vec_lit = "[" + ",".join(f"{float(x):.8f}" for x in query_vec) + "]"
 
-    conditions: list[str] = []
-    params: list[Any] = [vec_lit, body.k]
-    i = 3
-    if body.tenant_id is not None:
-        conditions.append(f"tenant_id = ${i}")
-        params.append(body.tenant_id)
-        i += 1
-    if body.source_type is not None:
-        conditions.append(f"source_type = ${i}")
-        params.append(body.source_type)
-        i += 1
-    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-
-    sql = f"""
+    sql_no_filter = """
         SELECT id, doc_id, chunk_index, content,
                1 - (embedding <=> $1::vector) AS cosine_sim
         FROM chunks
-        {where}
+        ORDER BY embedding <=> $1::vector
+        LIMIT $2
+    """
+    sql_tenant_only = """
+        SELECT id, doc_id, chunk_index, content,
+               1 - (embedding <=> $1::vector) AS cosine_sim
+        FROM chunks
+        WHERE tenant_id = $3
+        ORDER BY embedding <=> $1::vector
+        LIMIT $2
+    """
+    sql_source_only = """
+        SELECT id, doc_id, chunk_index, content,
+               1 - (embedding <=> $1::vector) AS cosine_sim
+        FROM chunks
+        WHERE source_type = $3
+        ORDER BY embedding <=> $1::vector
+        LIMIT $2
+    """
+    sql_both_filters = """
+        SELECT id, doc_id, chunk_index, content,
+               1 - (embedding <=> $1::vector) AS cosine_sim
+        FROM chunks
+        WHERE tenant_id = $3 AND source_type = $4
         ORDER BY embedding <=> $1::vector
         LIMIT $2
     """
@@ -285,7 +295,20 @@ async def retrieve(req: Request, body: RetrievePayload) -> dict[str, Any]:
     async with pl.acquire() as conn:
         async with conn.transaction():
             await apply_search_session_params(conn, profile, tuner.overrides)
-            rows = await conn.fetch(sql, *params)
+            if body.tenant_id is None and body.source_type is None:
+                rows = await conn.fetch(sql_no_filter, vec_lit, body.k)
+            elif body.tenant_id is not None and body.source_type is None:
+                rows = await conn.fetch(sql_tenant_only, vec_lit, body.k, body.tenant_id)
+            elif body.tenant_id is None and body.source_type is not None:
+                rows = await conn.fetch(sql_source_only, vec_lit, body.k, body.source_type)
+            else:
+                rows = await conn.fetch(
+                    sql_both_filters,
+                    vec_lit,
+                    body.k,
+                    body.tenant_id,
+                    body.source_type,
+                )
 
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
     payload = telemetry.emit_retrieve(

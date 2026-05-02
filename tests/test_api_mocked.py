@@ -210,6 +210,26 @@ def test_retrieve_with_filters(http_client_mock_db: tuple[TestClient, object]) -
     assert "source_type" in sql
 
 
+def test_retrieve_tenant_id_only(http_client_mock_db: tuple[TestClient, object]) -> None:
+    client, conn = http_client_mock_db
+    conn.fetch = AsyncMock(return_value=[])
+    r = client.post("/retrieve", json={"query": "q", "k": 5, "tenant_id": "t"})
+    assert r.status_code == 200
+    sql = conn.fetch.call_args[0][0]
+    assert "WHERE tenant_id = $3" in sql.replace("\n", " ")
+    assert "source_type = $" not in sql
+
+
+def test_retrieve_source_type_only(http_client_mock_db: tuple[TestClient, object]) -> None:
+    client, conn = http_client_mock_db
+    conn.fetch = AsyncMock(return_value=[])
+    r = client.post("/retrieve", json={"query": "q", "k": 5, "source_type": "doc"})
+    assert r.status_code == 200
+    sql = conn.fetch.call_args[0][0]
+    assert "WHERE source_type = $3" in sql.replace("\n", " ")
+    assert "tenant_id = $" not in sql
+
+
 def test_telemetry_summary(http_client_mock_db: tuple[TestClient, object]) -> None:
     client, conn = http_client_mock_db
     conn.fetchval = AsyncMock(return_value=42)

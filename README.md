@@ -273,7 +273,7 @@ uv run pytest tests/ -q --cov=rag --cov-branch
 
 ### Continuous integration
 
-[GitHub Actions](.github/workflows/ci.yml) runs **pytest with coverage** on every push and pull request, an **informational `pip-audit`** step on the locked runtime dependencies (does not fail the job), and a separate job against **PostgreSQL with pgvector** for integration tests.
+[GitHub Actions](.github/workflows/ci.yml) runs **pytest with coverage** on every push and pull request; a **`security` job** runs **Bandit** on `src/rag` and `scripts` plus **blocking `pip-audit`** on exported locked runtime dependencies; and a separate job exercises **PostgreSQL with pgvector** for integration tests. [SECURITY.md](SECURITY.md) maps application risks to **OWASP Top 10:2025** and aligns with those checks.
 
 ## Project layout
 

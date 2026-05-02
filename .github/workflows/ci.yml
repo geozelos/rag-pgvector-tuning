@@ -21,11 +21,26 @@ jobs:
       - name: Pytest with coverage
         run: uv run pytest tests/ -q --cov=rag --cov-branch
 
-      - name: pip-audit (informational)
-        continue-on-error: true
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies (dev)
+        run: uv sync --group dev
+
+      - name: Bandit (Python static analysis)
+        run: uv run bandit -r src/rag scripts -ll -c pyproject.toml
+
+      - name: pip-audit (dependency CVEs)
         run: |
           uv export --frozen --no-dev --no-emit-project --no-hashes -o /tmp/deps-audit.txt
-          uv tool run pip-audit -r /tmp/deps-audit.txt
+          uv run pip-audit -r /tmp/deps-audit.txt
 
   integration:
     runs-on: ubuntu-latest

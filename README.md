@@ -1,6 +1,6 @@
 # rag-pgvector-tuning
 
-**Suggested public repository name:** `rag-pgvector-tuning` — a short name that tells readers they will find **RAG (retrieval-augmented generation) data**, **PostgreSQL with [pgvector](https://github.com/pgvector/pgvector)**, and **runtime tuning** of vector search parameters.
+**RAG (retrieval-augmented generation) data**, **PostgreSQL with [pgvector](https://github.com/pgvector/pgvector)**, and **runtime tuning** of vector search parameters.
 
 ## What this project is (in plain language)
 

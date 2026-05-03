@@ -21,3 +21,4 @@ build/
 # Type checkers / linters (if added later)
 .mypy_cache/
 .ruff_cache/
+.cursor/rules/*

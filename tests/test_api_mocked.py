@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import defaultdict, deque
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -242,6 +244,46 @@ def test_retrieve_tenant_id_only(http_client_mock_db: tuple[TestClient, object])
     assert "source_type = $" not in sql
 
 
+def test_retrieve_metadata_filter_in_sql(http_client_mock_db: tuple[TestClient, object]) -> None:
+    client, conn = http_client_mock_db
+    conn.fetch = AsyncMock(return_value=[])
+    r = client.post(
+        "/retrieve",
+        json={"query": "q", "k": 5, "metadata_filter": {"section": "intro"}},
+    )
+    assert r.status_code == 200
+    sql = conn.fetch.call_args[0][0]
+    assert "metadata @>" in sql
+
+
+def test_retrieve_requires_tenant_when_enabled(
+    http_client_mock_db: tuple[TestClient, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import rag.main as main_mod
+
+    monkeypatch.setattr(main_mod._settings, "require_tenant_id", True)
+    client, _conn = http_client_mock_db
+    r = client.post("/retrieve", json={"query": "q", "k": 3})
+    assert r.status_code == 400
+    assert "tenant_id" in r.json()["detail"].lower()
+
+
+def test_rate_limit_returns_429(
+    http_client_mock_db: tuple[TestClient, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import rag.main as main_mod
+
+    monkeypatch.setattr(main_mod._settings, "rate_limit_per_minute", 2)
+    client, conn = http_client_mock_db
+    client.app.state.rate_limit_buckets = defaultdict(deque)
+    conn.fetch = AsyncMock(return_value=[])
+    assert client.post("/retrieve", json={"query": "q", "k": 2}).status_code == 200
+    assert client.post("/retrieve", json={"query": "q", "k": 2}).status_code == 200
+    assert client.post("/retrieve", json={"query": "q", "k": 2}).status_code == 429
+
+
 def test_retrieve_source_type_only(http_client_mock_db: tuple[TestClient, object]) -> None:
     client, conn = http_client_mock_db
     conn.fetch = AsyncMock(return_value=[])
@@ -349,6 +391,38 @@ def test_ingest_chunk_content_too_long(
         json={"chunks": [{"doc_id": "d", "chunk_index": 0, "content": "123456"}]},
     )
     assert r.status_code == 422
+    assert "5" in r.json()["detail"]
+
+
+def test_ingest_chunk_limit_follows_create_app_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Handlers must use ``req.app.state.settings``, not import-time ``_settings``."""
+    import rag.main as main_mod
+    from rag.settings import Settings
+
+    from tests.conftest import FakeConn, FakePool
+
+    conn = FakeConn()
+
+    async def _create_pool(*_a: object, **_k: object) -> FakePool:
+        return FakePool(conn)
+
+    monkeypatch.setattr(main_mod, "asyncpg", SimpleNamespace(create_pool=_create_pool))
+
+    low_limit = Settings(
+        database_url="postgresql://mock/mock",
+        max_chunk_content_chars=3,
+        max_ingest_chunks_per_request=50,
+    )
+    app = main_mod.create_app(low_limit)
+    with TestClient(app) as client:
+        r = client.post(
+            "/ingest/chunks",
+            json={"chunks": [{"doc_id": "d", "chunk_index": 0, "content": "1234"}]},
+        )
+    assert r.status_code == 422
+    assert "3" in r.json()["detail"]
 
 
 def test_retrieve_query_too_long(

@@ -17,6 +17,11 @@
             "title": "Doc Id",
             "type": "string"
           },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
           "source_type": {
             "default": "doc",
             "title": "Source Type",
@@ -66,7 +71,7 @@
         "type": "object"
       },
       "RetrievePayload": {
-        "description": "Search request: embed ``query`` with the same demo function used at ingest.",
+        "description": "Search request: embed ``query`` with the same backend used at ingest.",
         "properties": {
           "k": {
             "default": 10,
@@ -74,6 +79,19 @@
             "minimum": 1.0,
             "title": "K",
             "type": "integer"
+          },
+          "metadata_filter": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "JSON object matched with ``metadata @> filter`` (AND semantics on keys present).",
+            "title": "Metadata Filter"
           },
           "query": {
             "minLength": 1,
@@ -279,7 +297,7 @@
     },
     "/ingest/chunks": {
       "post": {
-        "description": "Upsert chunks: compute demo vectors (see ``rag.embeddings``), INSERT ... ON CONFLICT.",
+        "description": "Upsert chunks: compute vectors via the configured embedding backend, INSERT ... ON CONFLICT.",
         "operationId": "ingest_chunks_ingest_chunks_post",
         "requestBody": {
           "content": {

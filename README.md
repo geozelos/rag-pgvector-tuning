@@ -1,28 +1,44 @@
 # rag-pgvector-tuning
 
-**Suggested public repository name:** `rag-pgvector-tuning` — a short name that tells readers they will find **RAG (retrieval-augmented generation) data**, **PostgreSQL with [pgvector](https://github.com/pgvector/pgvector)**, and **runtime tuning** of vector search parameters.
+**What you run:** a small **[FastAPI](https://fastapi.tiangolo.com/)** service plus **[PostgreSQL](https://www.postgresql.org/)** with **[pgvector](https://github.com/pgvector/pgvector)**. You **ingest** text chunks as vectors, **retrieve** nearest neighbors for a query vector, and **tune** pgvector search knobs (mainly HNSW `ef_search` or IVFFlat `probes`) using YAML profiles, optional runtime overrides, and a demo **telemetry + tuner** loop.
 
-## What this project is (in plain language)
+**What this repo does *not* include:** prompt templates, chat orchestration, or a hosted LLM product. You bring your own model caller if you want answers—not just retrieved passages.
 
-- **RAG** means: you store text **chunks** with **embedding vectors** (numbers that represent meaning), then **search** for chunks similar to a user question to feed an LLM. This repo focuses on the **retrieval** and **database** side, not on calling OpenAI or similar APIs.
-- **pgvector** is a PostgreSQL extension that stores vectors and finds nearest neighbors (similar vectors) quickly.
-- **Physical tuning** here means: adjusting **query-time** settings for the index, mainly **HNSW `ef_search`** or **IVFFlat `probes`**, to trade **speed vs. recall/quality**. The API can suggest changes from simple telemetry and apply them within **guardrails** you configure in YAML.
+### Architecture (one path through the system)
 
-Embeddings in this demo are **deterministic fake vectors** (hash-based). That keeps the repo runnable **without API keys** while you learn ingestion, search, and tuning.
+1. **Config at startup** — `config/embedding.yaml` (vector dimension), `config/profiles.yaml` (HNSW vs IVFFlat defaults), `config/tuner_guardrails.yaml` (tuner bounds).
+2. **Ingest** — `POST /ingest/chunks` turns each chunk’s text into an embedding via the configured **embedding backend**, then upserts rows into table `chunks`.
+3. **Retrieve** — `POST /retrieve` embeds the query text with the **same** backend, runs a pgvector nearest-neighbor query under the **active profile’s** session parameters (`ef_search` / `probes`).
+4. **Tune** — in-process telemetry records retrieve latency; `/tuner/recommend` suggests parameter moves within guardrails.
 
-## Who this is for
+### Scope (this repository)
 
-Developers new to RAG or pgvector who want a **small, runnable FastAPI service** with:
+- **Retrieval stack:** PostgreSQL + pgvector, SQL migrations, ingest and k-NN retrieve, YAML-driven HNSW / IVFFlat query knobs, in-process telemetry and MVP tuner.
+- **Embeddings:** pluggable backends ([see below](#embedding-backends)) — `demo` (hash), OpenAI-compatible HTTP, or local HTTP.
+- **Operations:** optional strict `tenant_id` on retrieve, CORS allowlist, disabling `/docs`, optional per-IP rate limit (see [Operations](#operations-environment-variables)).
+- **Metadata:** per-chunk JSON on ingest and `metadata_filter` on retrieve (Postgres `@>` containment).
+- **Learning helpers:** optional [`scripts/eval_recall.py`](scripts/eval_recall.py) for a small recall@k smoke-style check.
 
-- Docker Postgres + pgvector
-- SQL migrations
-- HTTP endpoints for ingest, retrieve, and tuning
-- Config files you can edit without touching Python
+For limits and threat assumptions, see [SECURITY.md](SECURITY.md). This repo does not ship a full LLM orchestration layer or a hosted offering — bring your own caller and deployment hardening.
 
-## What you need installed
+### Embedding backends
 
-- **Docker** and **Docker Compose** v2 (`docker compose`) — for Option A (full stack) or Option B (Postgres only)
-- **Python 3.11+** and **[uv](https://github.com/astral-sh/uv)** — for Option B (API on the host)
+| Value | Meaning |
+| ----- | ------- |
+| `demo` (default) | Deterministic hash-derived vectors—**no API keys**, good for latency demos; **not** semantic similarity. |
+| `openai` | `POST {OPENAI_BASE_URL}/embeddings` — set **`OPENAI_API_KEY`**, match **`config/embedding.yaml`** dimension to the model (e.g. `text-embedding-3-small`). |
+| `local` | Same HTTP shape as OpenAI; set **`LOCAL_EMBEDDINGS_BASE_URL`** (e.g. Ollama, TEI). Optional **`LOCAL_EMBEDDINGS_API_KEY`**. |
+
+Misaligned embedding dimension → ingest/retrieve will fail with a clear error.
+
+### Who this is for
+
+Developers learning **RAG retrieval** and **pgvector** who want a **reproducible** HTTP API and SQL migrations—not a full production retrieval platform.
+
+### What you need installed
+
+- **Docker** and **Docker Compose v2** (`docker compose`). If your machine only has the legacy hyphenated binary, use **`docker-compose`** instead (same flags).
+- **Python 3.11+** and **[uv](https://github.com/astral-sh/uv)** — for running the API on the host against Docker Postgres.
 
 ## Quick start
 
@@ -63,49 +79,47 @@ Then follow **[Step-by-step test guide](#path-1-docker-full-stack-api--postgres)
 
 ## Step-by-step test guide
 
-Use this checklist to **see the project working end-to-end**: data in pgvector, similarity search, YAML profiles, runtime overrides, and optional telemetry/tuner.
+Work through the steps in order: **load vectors**, **query**, then **change search parameters** and compare timings.
 
-**What you should get out of it**
+**What you should see**
 
+| Step area | What to notice |
+| --------- | ---------------- |
+| Ingest + retrieve | `results` rows include `doc_id`, `content`, `cosine_sim`, and optional **`metadata`**. Embedding dimension follows **`config/embedding.yaml`**. |
+| Retrieve response | **`duration_ms`**, active **`profile`**, effective **`hnsw_ef_search`** or **`ivfflat_probes`**. |
+| Active profile | Values from `config/profiles.yaml` plus optional runtime overrides. |
+| Runtime PATCH | Lower **`ef_search`** often lowers **latency** (and may lower **recall**). With **`EMBEDDING_BACKEND=demo`**, vectors are not semantic—**latency is the clearest signal**. |
+| Telemetry / tuner | Rolling latency percentiles; `/tuner/recommend` proposes bounded moves. |
 
-| Step area         | What to notice                                                                                                                                                                              |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Ingest + retrieve | JSON with `results`; vectors are **768-d** (see `config/embedding.yaml`)                                                                                                                    |
-| Retrieve response | `duration_ms`, `hnsw_ef_search` / profile name                                                                                                                                              |
-| Active profile    | Values from `config/profiles.yaml` plus any overrides                                                                                                                                       |
-| Runtime PATCH     | After changing `hnsw_ef_search`, **compare** `duration_ms` on the same query (lower `ef_search` often lowers latency; this demo uses hash embeddings so **latency is the clearest signal**) |
-| Telemetry / tuner | Rolling stats; MVP suggestions from `/tuner/recommend`                                                                                                                                      |
-
-
-If `docker compose` is not found, try **Docker Compose V2** via Docker Desktop or the plugin command `docker compose` (with a space). Older installs may use `docker-compose`.
+If `docker compose` is missing, install **Compose V2** (Docker Desktop / plugin). Some older setups only provide **`docker-compose`**.
 
 ### Path 1: Docker full stack (API + Postgres)
 
-1. **Prerequisites:** Docker with Compose. From the repo root, start the stack:
+1. **Start the stack** — Postgres + API; migrations run on API startup.
   ```bash
-   docker compose up --build -d
+  docker compose up --build -d
   ```
-2. **Verify containers:** API should start after migrations complete.
+2. **Confirm the API is healthy** — migrations must succeed before traffic is safe.
   ```bash
-   docker compose ps
-   docker compose logs -f api
+  docker compose ps
+  docker compose logs -f api
   ```
-   (`Ctrl+C` leaves containers running; only stops log follow.)
-3. **Open Swagger UI:** [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-4. **Ingest two chunks** (or use “Try it out” on `POST /ingest/chunks`):
+   (`Ctrl+C` stops following logs; containers keep running.)
+3. **Open Swagger UI** — try endpoints interactively: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+4. **Ingest two chunks** — embeddings use **`EMBEDDING_BACKEND`** (default `demo`). Rows upsert on **`(doc_id, chunk_index)`** (tenant isolation is optional filtering—see [SECURITY.md](SECURITY.md)).
   ```bash
-   curl -s -X POST http://127.0.0.1:8000/ingest/chunks \
-     -H "Content-Type: application/json" \
-     -d '{"chunks":[{"tenant_id":"demo","source_type":"doc","doc_id":"doc-a","chunk_index":0,"content":"pgvector stores embeddings in PostgreSQL."},{"tenant_id":"demo","source_type":"doc","doc_id":"doc-b","chunk_index":0,"content":"HNSW ef_search trades latency for recall."}]}'
+  curl -s -X POST http://127.0.0.1:8000/ingest/chunks \
+    -H "Content-Type: application/json" \
+    -d '{"chunks":[{"tenant_id":"demo","source_type":"doc","doc_id":"doc-a","chunk_index":0,"content":"pgvector stores embeddings in PostgreSQL."},{"tenant_id":"demo","source_type":"doc","doc_id":"doc-b","chunk_index":0,"content":"HNSW ef_search trades latency for recall."}]}'
   ```
    Expect `{"upserted":2,...}`.
-5. **Retrieve** and note **timings and search knob** in the response:
+5. **Retrieve** — query embedding + k-NN search under the active profile. **`tenant_id`**, **`source_type`**, and **`metadata_filter`** narrow candidates **before** ordering by distance.
   ```bash
-   curl -s -X POST http://127.0.0.1:8000/retrieve \
-     -H "Content-Type: application/json" \
-     -d '{"query":"What is ef_search?","k":5,"tenant_id":"demo"}'
+  curl -s -X POST http://127.0.0.1:8000/retrieve \
+    -H "Content-Type: application/json" \
+    -d '{"query":"What is ef_search?","k":5,"tenant_id":"demo"}'
   ```
-   Save or remember **`duration_ms`** and **`hnsw_ef_search`** for comparison later.
+   Record **`duration_ms`** and **`hnsw_ef_search`** for the next steps.
 6. **Inspect active profile** (YAML + overrides):
   ```bash
    curl -s http://127.0.0.1:8000/config/active-profile
@@ -153,7 +167,7 @@ If `docker compose` is not found, try **Docker Compose V2** via Docker Desktop o
 
 ## Example: ingest chunks
 
-This inserts (or updates) rows in the `chunks` table. Vectors are **768-dimensional** in the default config (`config/embedding.yaml`).
+Upserts into `chunks` (vector dimension from **`config/embedding.yaml`**; embedding values from **`EMBEDDING_BACKEND`**). Optional per-chunk **`metadata`** object is stored as JSONB for **`metadata_filter`** on retrieve.
 
 ```bash
 curl -s -X POST http://127.0.0.1:8000/ingest/chunks \
@@ -165,7 +179,8 @@ curl -s -X POST http://127.0.0.1:8000/ingest/chunks \
         "source_type": "doc",
         "doc_id": "manual-1",
         "chunk_index": 0,
-        "content": "PostgreSQL can store vectors with the pgvector extension."
+        "content": "PostgreSQL can store vectors with the pgvector extension.",
+        "metadata": {"section": "intro", "lang": "en"}
       }
     ]
   }'
@@ -187,10 +202,17 @@ curl -s -X POST http://127.0.0.1:8000/retrieve \
 
 The API uses the **active profile** from `config/profiles.yaml` to set session parameters (e.g. HNSW `ef_search`) before running the query. The response includes match rows, timings, and which profile was used.
 
-Optional filters:
+Optional filters (applied in SQL **before** vector ordering):
 
-- `tenant_id` — only chunks for that tenant
+- `tenant_id` — restrict to one tenant string
 - `source_type` — e.g. only `"doc"` chunks
+- `metadata_filter` — JSON object; rows must satisfy **`metadata @> metadata_filter`** (Postgres containment). Example:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/retrieve \
+  -H "Content-Type: application/json" \
+  -d '{"query":"vectors","k":5,"tenant_id":"demo","metadata_filter":{"section":"intro"}}'
+```
 
 ## Example: see active tuning profile
 
@@ -243,6 +265,7 @@ After **`uv sync`**, use the **`rag-cli`** entrypoint for JSON endpoints:
 ```bash
 uv run rag-cli ingest --file chunks.json
 uv run rag-cli retrieve --query "What is ef_search?" --k 5 --tenant-id demo
+uv run rag-cli retrieve --query "vectors" --k 5 --tenant-id demo --metadata-json '{"section":"intro"}'
 uv run rag-cli tune-step --auto-apply
 ```
 
@@ -273,12 +296,22 @@ uv run python scripts/load_retrieve_qps.py --qps 20 --duration 20 --json
 
 See **`python scripts/load_retrieve_qps.py --help`** for options (`--base-url`, `--query`, `--k`, `--concurrency`, …).
 
+## Minimal recall check
+
+[`scripts/eval_recall.py`](scripts/eval_recall.py) ingests a tiny labeled corpus, runs **`POST /retrieve`** for fixed queries (including one **`metadata_filter`** case), and prints whether expected **`doc_id`** values appear in the top‑**k** results. With **`EMBEDDING_BACKEND=demo`**, rankings are **not** semantic—expect **`hit: false`** sometimes; use **`openai`** or **`local`** for meaningful recall.
+
+```bash
+uv run python scripts/eval_recall.py --k 5
+```
+
+Use **`--skip-ingest`** when the corpus is already loaded.
+
 ## Configuration files (read this before emailing anyone)
 
 
 | File                           | Purpose                                                                                                                                                                                                 |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `config/embedding.yaml`        | Declares **embedding dimension** and a label for the demo “model”. Replace the demo embedder in code when you use a real model.                                                                         |
+| `config/embedding.yaml`        | Declares **embedding dimension** and model label. Must match the output size of **`EMBEDDING_BACKEND`** (`openai` / `local`).                                                                             |
 | `config/profiles.yaml`         | **Which index family** (HNSW vs IVFFlat), **build** hints, and **default search** parameters (`hnsw_ef_search`, `ivfflat_probes`). Set `active_profile` to the profile name you want.                   |
 | `config/tuner_guardrails.yaml` | **Bounds** for the tuner: min/max `ef_search` and probes, max change per step, **cooldown** between auto changes, **target_p99_latency_ms**, rollback multipliers, and **whitelist** of runtime params. |
 
@@ -294,14 +327,23 @@ See **`python scripts/load_retrieve_qps.py --help`** for options (`--base-url`, 
 
 Do not flip `active_profile` to IVFFlat in YAML unless your database actually has a matching **IVFFlat** index — otherwise searches will be wrong or fail.
 
-## Operations (readiness, ingest limits, optional API key)
+## Operations (environment variables)
 
-- **`GET /health`** — process liveness only (no database call). Use for “is the Python process up?” probes.
-- **`GET /ready`** — readiness after migrations: PostgreSQL connectivity, **pgvector** extension loaded, and the **`chunks`** table exists. HTTP **503** with a JSON body when something is missing or the DB is unreachable — suitable for orchestrators that should not send traffic until the DB is usable.
-- **`MAX_INGEST_CHUNKS_PER_REQUEST`** — caps how many items you may send in one `POST /ingest/chunks` body (default **500**). Larger batches receive HTTP **413**.
-- **`RAG_API_KEY`** — optional shared secret. If set in `.env`, every route except **`GET /health`** and **`GET /ready`** requires `Authorization: Bearer <key>` or `X-API-Key: <key>`. The same value may be supplied via **`API_KEY`** (pydantic-settings alias). Leave unset for local demos. See **[SECURITY.md](SECURITY.md)** for production posture beyond this stub.
+See [.env.example](.env.example) for a concise list. Highlights:
 
-In **`docker-compose.yml`**, the **`api`** service defines a **`healthcheck`** against **`GET /ready`** so Compose can treat the container as healthy only after migrations and DB checks succeed (`start_period` allows time for first-boot migrations).
+- **`GET /health`** — process liveness only (no database).
+- **`GET /ready`** — DB connectivity, **pgvector** loaded, **`chunks`** exists (**503** if not).
+- **`DATABASE_URL`** — async Postgres DSN for the API.
+- **`MAX_INGEST_CHUNKS_PER_REQUEST`** — max chunks per ingest request (default **500**, **413** if exceeded).
+- **`MAX_CHUNK_CONTENT_CHARS`**, **`MAX_RETRIEVE_QUERY_CHARS`** — body size limits (**422** when exceeded).
+- **`EMBEDDING_BACKEND`**, **`OPENAI_*`**, **`LOCAL_EMBEDDINGS_*`**, **`EMBEDDING_HTTP_TIMEOUT_S`** — see [Embedding backends](#embedding-backends).
+- **`REQUIRE_TENANT_ID`** — when `true`, **`POST /retrieve`** requires a non-empty **`tenant_id`** (**400** otherwise).
+- **`CORS_ORIGINS`** — comma-separated browser origins; unset keeps framework defaults.
+- **`DISABLE_OPENAPI_UI`** — when `true`, **`/docs`** and **`/redoc`** are disabled (use in untrusted networks).
+- **`RATE_LIMIT_PER_MINUTE`** — optional **per-IP** limit for this single process (**429**); **not** a multi-worker/global quota—prefer a **reverse proxy** in production (see [SECURITY.md](SECURITY.md)).
+- **`RAG_API_KEY`** / **`API_KEY`** — optional shared secret; when set, all routes except **`/health`** and **`/ready`** require **`Authorization: Bearer`** or **`X-API-Key`**.
+
+In **`docker-compose.yml`**, the **`api`** service **`healthcheck`** uses **`GET /ready`** (`start_period` allows migrations).
 
 ## Run tests
 
@@ -326,7 +368,9 @@ uv run pytest tests/ -q --cov=rag --cov-branch
 - `src/rag/` — FastAPI app, tuner, telemetry, config loading; [`cli.py`](src/rag/cli.py) provides **`rag-cli`**
 - `migrations/` — numbered SQL files applied by `scripts/migrate.py`
 - `scripts/migrate.py` — idempotent migration runner
-- `scripts/load_retrieve_qps.py` — paced `/retrieve` load generator for tuner demos (**`uv sync`** includes **httpx**; use **`uv sync --group dev`** when running pytest alongside)
+- `scripts/load_retrieve_qps.py` — paced `/retrieve` load generator for tuner demos
+- `scripts/eval_recall.py` — tiny recall@k harness (ingest + retrieve + metadata filter)
+- `src/rag/embedding_backend.py` — pluggable embedding providers
 - `tests/` — pytest (tuner, API with mocked DB, optional integration against real Postgres)
 
 ## License

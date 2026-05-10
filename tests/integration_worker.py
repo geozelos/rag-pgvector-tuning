@@ -68,6 +68,36 @@ def _run() -> None:
         assert body["results"], "expected at least one hit"
         assert any(r.get("doc_id") == "integration-doc" for r in body["results"])
 
+        ingest_meta = client.post(
+            "/ingest/chunks",
+            json={
+                "chunks": [
+                    {
+                        "tenant_id": "integ",
+                        "source_type": "doc",
+                        "doc_id": "meta-doc",
+                        "chunk_index": 0,
+                        "content": "Metadata filter smoke test.",
+                        "metadata": {"tier": "gold"},
+                    },
+                ],
+            },
+        )
+        assert ingest_meta.status_code == 200, ingest_meta.text
+
+        ret_meta = client.post(
+            "/retrieve",
+            json={
+                "query": "smoke",
+                "k": 5,
+                "tenant_id": "integ",
+                "metadata_filter": {"tier": "gold"},
+            },
+        )
+        assert ret_meta.status_code == 200, ret_meta.text
+        hits = ret_meta.json().get("results", [])
+        assert any(r.get("doc_id") == "meta-doc" for r in hits)
+
         prof = client.get("/config/active-profile")
         assert prof.status_code == 200
 

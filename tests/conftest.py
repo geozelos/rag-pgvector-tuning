@@ -71,7 +71,8 @@ def http_client_mock_db(
 
     from starlette.testclient import TestClient
 
-    with TestClient(main_mod.app) as client:
+    app = main_mod.create_app(main_mod._settings)
+    with TestClient(app) as client:
         yield client, conn
 
 
@@ -82,16 +83,11 @@ def http_client_mock_db_with_api_key(
     """Same as ``http_client_mock_db`` but ``RAG_API_KEY`` is enforced on protected routes."""
     import rag.main as main_mod
 
-    monkeypatch.setattr(
-        main_mod,
-        "_settings",
-        Settings(
-            database_url="postgresql://mock/mock",
-            api_key="test-secret-key",
-            max_ingest_chunks_per_request=500,
-        ),
+    settings = Settings(
+        database_url="postgresql://mock/mock",
+        api_key="test-secret-key",
+        max_ingest_chunks_per_request=500,
     )
-
     conn = FakeConn()
 
     async def _create_pool(*_a: object, **_k: object) -> FakePool:
@@ -101,5 +97,6 @@ def http_client_mock_db_with_api_key(
 
     from starlette.testclient import TestClient
 
-    with TestClient(main_mod.app) as client:
+    app = main_mod.create_app(settings)
+    with TestClient(app) as client:
         yield client, conn

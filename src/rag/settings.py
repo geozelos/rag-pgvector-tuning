@@ -25,9 +25,64 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("RAG_API_KEY", "API_KEY"),
     )
 
-    @field_validator("api_key", mode="before")
+    embedding_backend: str = Field(
+        default="demo",
+        validation_alias=AliasChoices("EMBEDDING_BACKEND"),
+        description="demo (hash), openai (HTTP API), or local (OpenAI-compatible HTTP, e.g. Ollama/TEI).",
+    )
+    openai_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("OPENAI_API_KEY"),
+    )
+    openai_base_url: str = Field(
+        default="https://api.openai.com/v1",
+        validation_alias=AliasChoices("OPENAI_BASE_URL"),
+    )
+    openai_embedding_model: str = Field(
+        default="text-embedding-3-small",
+        validation_alias=AliasChoices("OPENAI_EMBEDDING_MODEL"),
+    )
+    local_embeddings_base_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("LOCAL_EMBEDDINGS_BASE_URL"),
+    )
+    local_embeddings_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("LOCAL_EMBEDDINGS_API_KEY"),
+    )
+    local_embedding_model: str = Field(
+        default="nomic-embed-text",
+        validation_alias=AliasChoices("LOCAL_EMBEDDING_MODEL"),
+    )
+    embedding_http_timeout_s: float = Field(
+        default=60.0,
+        ge=1.0,
+        validation_alias=AliasChoices("EMBEDDING_HTTP_TIMEOUT_S"),
+    )
+
+    require_tenant_id: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("REQUIRE_TENANT_ID"),
+    )
+    cors_origins: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("CORS_ORIGINS"),
+        description="Comma-separated origins for browser clients; unset keeps FastAPI defaults.",
+    )
+    disable_openapi_ui: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("DISABLE_OPENAPI_UI"),
+    )
+    rate_limit_per_minute: int | None = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("RATE_LIMIT_PER_MINUTE"),
+        description="Best-effort in-process limit per client IP; unset disables (use a proxy in production).",
+    )
+
+    @field_validator("api_key", "openai_api_key", "local_embeddings_api_key", mode="before")
     @classmethod
-    def _empty_api_key_as_none(cls, value: object) -> object:
+    def _empty_secret_as_none(cls, value: object) -> object:
         if value == "":
             return None
         return value

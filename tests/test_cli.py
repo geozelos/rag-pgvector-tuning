@@ -68,6 +68,26 @@ def test_cli_retrieve_success(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Ca
     assert out["profile"] == "default"
 
 
+def test_cli_retrieve_with_metadata_filter(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+        def post(self, path: str, json: dict | None = None, params: dict | None = None) -> _OkJsonResp:
+            captured["json"] = json
+            return _OkJsonResp({"results": []})
+
+    monkeypatch.setattr(cli_mod.httpx, "Client", FakeClient)
+    code = cli_mod.main(["retrieve", "--query", "hello", "--metadata-filter", '{"topic":"faq"}'])
+    assert code == 0
+    assert captured["json"] == {"query": "hello", "k": 10, "metadata_filter": {"topic": "faq"}}
+
+
 def test_cli_tune_step_posts_auto_apply(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     captured: dict[str, object] = {}
 
@@ -107,6 +127,27 @@ def test_cli_http_error_stderr(monkeypatch: pytest.MonkeyPatch, capsys: pytest.C
     assert code == 1
     err = json.loads(capsys.readouterr().err)
     assert err["status_code"] == 401
+
+
+def test_cli_invalid_metadata_filter_json_exits_2(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    class FakeClient:
+        def __init__(self, *a: object, **k: object) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+        def post(self, *a: object, **k: object) -> _OkJsonResp:
+            calls.append("post")
+            return _OkJsonResp({})
+
+    monkeypatch.setattr(cli_mod.httpx, "Client", FakeClient)
+    with pytest.raises(SystemExit) as exc:
+        cli_mod.main(["retrieve", "--query", "x", "--metadata-filter", "{bad"])
+    assert exc.value.code == 2
+    assert calls == []
 
 
 def test_cli_ingest_from_file(tmp_path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

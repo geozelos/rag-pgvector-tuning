@@ -29,7 +29,10 @@ For limits and threat assumptions, see [SECURITY.md](SECURITY.md). This repo doe
 | `openai` | `POST {OPENAI_BASE_URL}/embeddings` — set **`OPENAI_API_KEY`**, match **`config/embedding.yaml`** dimension to the model (e.g. `text-embedding-3-small`). |
 | `local` | Same HTTP shape as OpenAI; set **`LOCAL_EMBEDDINGS_BASE_URL`** (e.g. Ollama, TEI). Optional **`LOCAL_EMBEDDINGS_API_KEY`**. |
 
-Misaligned embedding dimension → ingest/retrieve will fail with a clear error.
+> [!CAUTION]
+> **Attention — embedding dimension**
+>
+> **Misaligned** dimension — **`config/embedding.yaml`** and the **DB** must match your model’s **actual vector length** — or **ingest** and **retrieve** will **fail**. The API returns a **clear error** so you can fix the config or backend.
 
 ### Who this is for
 

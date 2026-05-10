@@ -18,12 +18,12 @@ Mappings are **qualitative** (code inspection). Earlier revisions used **OWASP T
 
 **Findings**
 
-- **`tenant_id` / `source_type` are optional filters** on `POST /retrieve` — omitting them returns hits across **all** rows (`src/rag/main.py`).
+- **`tenant_id` / `source_type` / `metadata_filter` are optional filters** on `POST /retrieve` — omitting them returns hits across **all** rows (`src/rag/main.py`). When **`REQUIRE_TENANT_ID=true`**, `tenant_id` becomes mandatory (**400** if missing).
 - Any authenticated caller (when **`RAG_API_KEY`** / **`API_KEY`** is set) shares **one global secret** — **no RBAC**, **no per-tenant API keys**, **no JWT scopes**. With **no API key configured**, every route except **`GET /health`** and **`GET /ready`** remains **anonymous full access**.
 - **`GET /health`** and **`GET /ready`** are **always unauthenticated** (for probes); **`/ready`** does not grant data access but confirms DB/pgvector/table readiness.
 - **Ingest** can **overwrite** chunks by `(doc_id, chunk_index)` for **any** declared tenant string — multi-tenancy is **client-declared**, not cryptographically enforced.
 - **`PATCH /config/runtime-search`**, **`POST /tuner/*`**, **`POST /telemetry/ingest-backlog/clear`** affect **global** tuning/telemetry state for the process.
-- **OpenAPI `/docs` and `/redoc`** expose the attack surface.
+- **OpenAPI `/docs` and `/redoc`** expose the attack surface — disable with **`DISABLE_OPENAPI_UI=true`** when exposing the API beyond trusted networks.
 
 **Mitigations (production-oriented)**
 
@@ -39,13 +39,28 @@ Mappings are **qualitative** (code inspection). Earlier revisions used **OWASP T
 
 - **Postgres** published on host port **5433** in `docker-compose.yml` — avoid unintended exposure beyond localhost.
 - **Default DB credentials** (`rag` / `rag`) are documented for dev — **not** for the internet.
-- **No explicit security headers, rate limiting, or CORS allowlist** in application code (FastAPI defaults only).
+- **Optional CORS allowlist** via **`CORS_ORIGINS`** (comma-separated). When unset, FastAPI defaults apply.
+- **Optional in-process rate limit** via **`RATE_LIMIT_PER_MINUTE`** (per client IP, **single worker only**). For real deployments prefer an **API gateway** or reverse-proxy token bucket (see snippet below).
 - **Positive control:** **`GET /ready`** checks connectivity, **`vector`** extension, and **`public.chunks`** — helps orchestrators avoid routing traffic before migrations (does **not** replace auth).
 
 **Mitigations**
 
 - Bind services to **internal networks** in real deployments; **do not** expose Postgres publicly.
-- Add **rate limiting** (proxy or middleware), **security headers**, and explicit **CORS** when browser clients exist.
+- Add **rate limiting** (proxy or middleware), **security headers**, and explicit **CORS** when browser clients exist. Example **nginx** zones (adjust zones and TLS separately):
+
+```nginx
+limit_req_zone $binary_remote_addr zone=rag_ingest:10m rate=10r/s;
+limit_req_zone $binary_remote_addr zone=rag_retrieve:10m rate=30r/s;
+
+location /ingest/ {
+  limit_req zone=rag_ingest burst=20 nodelay;
+  proxy_pass http://127.0.0.1:8000;
+}
+location /retrieve {
+  limit_req zone=rag_retrieve burst=50 nodelay;
+  proxy_pass http://127.0.0.1:8000;
+}
+```
 - Use **secrets management** and **strong** credentials outside demos.
 
 ---

@@ -43,6 +43,7 @@ class RetrieveEvent:
     ivfflat_probes: int | None
     filter_tenant_id: str | None
     filter_source_type: str | None
+    filter_metadata: dict[str, Any] | None = None
 
 
 class TelemetryCollector:
@@ -95,6 +96,7 @@ class TelemetryCollector:
         ivfflat_probes: int | None,
         filter_tenant_id: str | None,
         filter_source_type: str | None,
+        filter_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         ev = RetrieveEvent(
             ts=time.monotonic(),
@@ -105,6 +107,7 @@ class TelemetryCollector:
             ivfflat_probes=ivfflat_probes,
             filter_tenant_id=filter_tenant_id,
             filter_source_type=filter_source_type,
+            filter_metadata=filter_metadata,
         )
         with self._lock:
             self._retrieve.append(ev)
@@ -117,6 +120,7 @@ class TelemetryCollector:
             ivfflat_probes=ivfflat_probes,
             filter_tenant_id=filter_tenant_id,
             filter_source_type=filter_source_type,
+            filter_metadata=filter_metadata,
         )
 
     @staticmethod

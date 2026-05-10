@@ -41,6 +41,18 @@ def _headers(api_key: str | None) -> dict[str, str]:
     return {"X-API-Key": api_key}
 
 
+def _parse_cli_json(raw: str, *, label: str) -> Any:
+    """Parse JSON from CLI args; exit with stderr message on failure."""
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        print(
+            json.dumps({"error": "invalid_json", "field": label, "detail": str(exc)}),
+            file=sys.stderr,
+        )
+        raise SystemExit(2) from exc
+
+
 def _client(base_url: str, api_key: str | None, timeout: float) -> httpx.Client:
     return httpx.Client(
         base_url=base_url.rstrip("/"),
@@ -94,6 +106,12 @@ Examples:
     retrieve.add_argument("--k", type=int, default=10)
     retrieve.add_argument("--tenant-id", default=None)
     retrieve.add_argument("--source-type", default=None)
+    retrieve.add_argument(
+        "--metadata-filter",
+        default=None,
+        metavar="JSON",
+        help='Optional JSON object for POST /retrieve metadata_filter (e.g. \'{"topic":"faq"}\')',
+    )
 
     tune_step = sub.add_parser("tune-step", help="POST /tuner/step")
     tune_step.add_argument("--auto-apply", action="store_true", help="Pass auto_apply=true query param")
@@ -113,7 +131,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raw = sys.stdin.read()
             else:
                 raw = Path(args.file).read_text(encoding="utf-8")
-            body = json.loads(raw)
+            body = _parse_cli_json(raw, label="ingest_body")
             r = client.post("/ingest/chunks", json=body)
             return _handle_response(r)
 
@@ -123,6 +141,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 payload["tenant_id"] = args.tenant_id
             if args.source_type is not None:
                 payload["source_type"] = args.source_type
+            if args.metadata_filter is not None:
+                payload["metadata_filter"] = _parse_cli_json(
+                    args.metadata_filter,
+                    label="metadata_filter",
+                )
             r = client.post("/retrieve", json=payload)
             return _handle_response(r)
 

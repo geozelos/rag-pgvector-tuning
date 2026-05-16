@@ -206,7 +206,7 @@
   "info": {
     "description": "RAG retrieval demo: PostgreSQL pgvector + YAML-driven search parameter tuning.",
     "title": "rag-pgvector-tuning",
-    "version": "1.2.0"
+    "version": "1.3.0"
   },
   "openapi": "3.1.0",
   "paths": {

@@ -21,4 +21,8 @@ build/
 # Type checkers / linters (if added later)
 .mypy_cache/
 .ruff_cache/
+.deps-audit.txt
 .cursor/rules/*
+
+# Local-only product strategy (never commit)
+private/

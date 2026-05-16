@@ -61,6 +61,36 @@ location /retrieve {
   proxy_pass http://127.0.0.1:8000;
 }
 ```
+
+**Caddy** (rate limiting needs a plugin or separate layer; example shows TLS reverse proxy to the API):
+
+```caddyfile
+rag.example.com {
+  encode gzip
+  reverse_proxy 127.0.0.1:8000
+}
+```
+
+**Traefik** (Docker labels or file provider; example static `routes.yml` fragment):
+
+```yaml
+http:
+  routers:
+    rag:
+      rule: PathPrefix(`/`)
+      service: rag-api
+      entryPoints:
+        - websecure
+      tls: {}
+  services:
+    rag-api:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:8000"
+```
+
+Tune **`entryPoints`**, **`tls`**, and **`servers`** for your network; add **middleware** rate limits in Traefik v3 if needed.
+
 - Use **secrets management** and **strong** credentials outside demos.
 
 ---

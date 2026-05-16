@@ -43,6 +43,11 @@ Developers learning **RAG retrieval** and **pgvector** who want a **reproducible
 - **Docker** and **Docker Compose v2** (`docker compose`). If your machine only has the legacy hyphenated binary, use **`docker-compose`** instead (same flags).
 - **Python 3.11+** and **[uv](https://github.com/astral-sh/uv)** — for running the API on the host against Docker Postgres.
 
+### Operator ergonomics
+
+- **[Makefile](Makefile):** run `make help` for a list of shortcuts (`make up`, `make down`, `make migrate`, `make test`, `make integration`, `make security`, …). If the Compose V2 plugin is missing, use e.g. `make up COMPOSE=docker-compose`.
+- **Dev container:** [.devcontainer/devcontainer.json](.devcontainer/devcontainer.json) — open the folder in VS Code or Cursor and **“Reopen in Container”**. Includes **Docker-from-Docker** so `make up` / `make postgres-only` work from inside the container. **`DATABASE_URL`** defaults to `host.docker.internal:5433` (Postgres exposed by Compose on the host). On Linux you may need [extra hosts config](https://aka.ms/vscode-remote/containers/docker-host) if `host.docker.internal` is unavailable.
+
 ## Quick start
 
 ### Option A — Everything in Docker (Postgres + API)
@@ -365,6 +370,8 @@ uv run pytest tests/ -q --cov=rag --cov-branch
 
 ## Project layout
 
+- `Makefile` — operator shortcuts (`make help`)
+- `.devcontainer/` — VS Code / Cursor dev container (Python + uv + Docker-from-Docker)
 - `Dockerfile` — API image (runs migrations then uvicorn)
 - `docker-compose.yml` — Postgres (pgvector) + API
 - `docker/entrypoint.sh` — migrate + start server

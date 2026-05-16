@@ -48,6 +48,10 @@ Developers learning **RAG retrieval** and **pgvector** who want a **reproducible
 - **[Makefile](Makefile):** run `make help` for a list of shortcuts (`make up`, `make down`, `make migrate`, `make test`, `make integration`, `make security`, …). If the Compose V2 plugin is missing, use e.g. `make up COMPOSE=docker-compose`.
 - **Dev container:** [.devcontainer/devcontainer.json](.devcontainer/devcontainer.json) — open the folder in VS Code or Cursor and **“Reopen in Container”**. Includes **Docker-from-Docker** so `make up` / `make postgres-only` work from inside the container. **`DATABASE_URL`** defaults to `host.docker.internal:5433` (Postgres exposed by Compose on the host). On Linux you may need [extra hosts config](https://aka.ms/vscode-remote/containers/docker-host) if `host.docker.internal` is unavailable.
 
+### Documentation and recipes
+
+Focused, copy-paste **cookbooks** live under **[`docs/`](docs/)** — start at **[`docs/README.md`](docs/README.md)** (full stack, local API, embeddings, metadata, IVFFlat, load testing, hardening, troubleshooting).
+
 ## Quick start
 
 ### Option A — Everything in Docker (Postgres + API)
@@ -370,6 +374,7 @@ uv run pytest tests/ -q --cov=rag --cov-branch
 
 ## Project layout
 
+- `docs/` — recipes and deep-dives ([`docs/README.md`](docs/README.md))
 - `Makefile` — operator shortcuts (`make help`)
 - `.devcontainer/` — VS Code / Cursor dev container (Python + uv + Docker-from-Docker)
 - `Dockerfile` — API image (runs migrations then uvicorn)

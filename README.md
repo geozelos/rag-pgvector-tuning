@@ -1,8 +1,49 @@
 # rag-pgvector-tuning
 
-**What you run:** a small **[FastAPI](https://fastapi.tiangolo.com/)** service plus **[PostgreSQL](https://www.postgresql.org/)** with **[pgvector](https://github.com/pgvector/pgvector)**. You **ingest** text chunks as vectors, **retrieve** nearest neighbors for a query vector, and **tune** pgvector search knobs (mainly HNSW `ef_search` or IVFFlat `probes`) using YAML profiles, optional runtime overrides, and a demo **telemetry + tuner** loop.
+*A small, friendly lab for pgvector retrieval—and the knobs that make it snappy (or spot-on).*
 
-**What this repo does *not* include:** prompt templates, chat orchestration, or a hosted LLM product. You bring your own model caller if you want answers—not just retrieved passages.
+## Why use this?
+
+Lots of RAG guides jump straight to “call the LLM.” This project sits one layer below, where **latency and recall actually live**: inside PostgreSQL, in index settings you can change without guessing.
+
+**In about an hour you can:**
+
+- **Ingest** text chunks as vectors and **retrieve** nearest neighbors over HTTP.
+- **Twist** HNSW `ef_search` or IVFFlat `probes` and watch **`duration_ms`** move (demo embeddings make latency obvious; real backends make semantics matter).
+- **Peek** at a toy **telemetry + tuner** loop—enough to see *how* you might automate tuning later, not enough to pretend it’s production autopilot.
+
+**What you take home:**
+
+| You get | Why it matters |
+| ------- | -------------- |
+| **Inspectable stack** | [FastAPI](https://fastapi.tiangolo.com/) + [PostgreSQL](https://www.postgresql.org/) + [pgvector](https://github.com/pgvector/pgvector)—migrations, SQL, and handlers you can read in an afternoon. |
+| **YAML-driven search profiles** | Swap HNSW vs IVFFlat defaults, patch runtime overrides, stay inside guardrails. |
+| **Pluggable embeddings** | `demo` (no API keys, great for latency play), or **OpenAI-compatible** / **local HTTP** when you care about real similarity. |
+| **Metadata filters** | JSON on ingest, `@>` containment on retrieve—filters apply *before* vector ordering. |
+| **Recipes & scripts** | [Cookbooks in `docs/`](docs/README.md), [`rag-cli`](#cli-rag-cli), load generator, tiny recall harness. |
+
+**What you don’t get (on purpose):** prompt templates, chat orchestration, or a hosted LLM product. You bring your own model caller when you want **answers**—this repo hands you the **passages** and teaches you the **search**.
+
+**Compared to…**
+
+- **pgvector docs alone** — you get a runnable API, migrations, and experiments you can repeat with `curl`.
+- **Large RAG frameworks** — fewer abstractions; more “here is the SQL and the session knob.”
+- **Managed vector DBs** — you operate Postgres yourself; you learn what the hosted service is hiding.
+
+### A good fit if you…
+
+- Are learning **RAG retrieval** and want something **reproducible** (Docker, `uv`, OpenAPI).
+- Need a **reference fork**, not a productized platform.
+- Like seeing **`ef_search` ↔ latency** with your own eyes before tuning production.
+
+### Probably not (yet) if you…
+
+- Want a one-click chatbot—grab a higher-level toolkit; come back when retrieval feels fuzzy.
+- Need enterprise auth, quotas, and SLAs out of the box—harden using [SECURITY.md](SECURITY.md) and your own ops.
+
+### What you run
+
+A compact **[FastAPI](https://fastapi.tiangolo.com/)** service and **[PostgreSQL](https://www.postgresql.org/)** with **[pgvector](https://github.com/pgvector/pgvector)**: **ingest** chunks → **retrieve** neighbors → **tune** search parameters via YAML, optional runtime overrides, and in-process telemetry.
 
 ### Architecture (one path through the system)
 
@@ -19,7 +60,7 @@
 - **Metadata:** per-chunk JSON on ingest and `metadata_filter` on retrieve (Postgres `@>` containment).
 - **Learning helpers:** optional [`scripts/eval_recall.py`](scripts/eval_recall.py) for a small recall@k smoke-style check.
 
-For limits and threat assumptions, see [SECURITY.md](SECURITY.md). This repo does not ship a full LLM orchestration layer or a hosted offering — bring your own caller and deployment hardening.
+Threat model and limits: [SECURITY.md](SECURITY.md).
 
 ### Embedding backends
 
@@ -33,10 +74,6 @@ For limits and threat assumptions, see [SECURITY.md](SECURITY.md). This repo doe
 > **Attention — embedding dimension**
 >
 > **Misaligned** dimension — **`config/embedding.yaml`** and the **DB** must match your model’s **actual vector length** — or **ingest** and **retrieve** will **fail**. The API returns a **clear error** so you can fix the config or backend.
-
-### Who this is for
-
-Developers learning **RAG retrieval** and **pgvector** who want a **reproducible** HTTP API and SQL migrations—not a full production retrieval platform.
 
 ### What you need installed
 
@@ -91,7 +128,7 @@ Then follow **[Step-by-step test guide](#path-1-docker-full-stack-api--postgres)
 
 ## Step-by-step test guide
 
-Work through the steps in order: **load vectors**, **query**, then **change search parameters** and compare timings.
+This is the “aha” walkthrough: **load vectors**, **query**, then **change search parameters** and compare timings. If the table below happens, the project did its job.
 
 **What you should see**
 

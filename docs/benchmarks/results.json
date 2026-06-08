@@ -1,0 +1,129 @@
+{
+  "meta": {
+    "generated_at_utc": "2026-06-08 19:52:51 UTC",
+    "base_url": "http://127.0.0.1:8000",
+    "embedding_backend": "demo",
+    "corpus_chunks": 400,
+    "corpus_chunks_observed": 405,
+    "latency_metric": "api_duration_ms",
+    "tenant_id": "demo",
+    "query": "HNSW ef_search latency benchmark",
+    "k": 10,
+    "qps": 15.0,
+    "warmup_s": 5.0,
+    "duration_s": 20.0,
+    "dry_run": false
+  },
+  "results": [
+    {
+      "requests_total": 300,
+      "requests_ok": 300,
+      "requests_failed": 0,
+      "status_histogram": {
+        "200": 300
+      },
+      "latency_ms_ok": {
+        "min": 1.719,
+        "p50": 5.265,
+        "p95": 7.047,
+        "p99": 8.136,
+        "max": 8.607,
+        "mean": 5.242
+      },
+      "hnsw_ef_search": 16,
+      "target_qps": 15.0,
+      "warmup_s": 5.0,
+      "duration_s": 20.0,
+      "achieved_qps": 15.0,
+      "note": "\u2014"
+    },
+    {
+      "requests_total": 300,
+      "requests_ok": 300,
+      "requests_failed": 0,
+      "status_histogram": {
+        "200": 300
+      },
+      "latency_ms_ok": {
+        "min": 1.652,
+        "p50": 5.924,
+        "p95": 7.825,
+        "p99": 9.515,
+        "max": 9.975,
+        "mean": 5.576
+      },
+      "hnsw_ef_search": 24,
+      "target_qps": 15.0,
+      "warmup_s": 5.0,
+      "duration_s": 20.0,
+      "achieved_qps": 15.0,
+      "note": "\u2014"
+    },
+    {
+      "requests_total": 300,
+      "requests_ok": 300,
+      "requests_failed": 0,
+      "status_histogram": {
+        "200": 300
+      },
+      "latency_ms_ok": {
+        "min": 1.671,
+        "p50": 5.933,
+        "p95": 8.263,
+        "p99": 12.532,
+        "max": 13.308,
+        "mean": 5.705
+      },
+      "hnsw_ef_search": 40,
+      "target_qps": 15.0,
+      "warmup_s": 5.0,
+      "duration_s": 20.0,
+      "achieved_qps": 15.0,
+      "note": "Default profile"
+    },
+    {
+      "requests_total": 300,
+      "requests_ok": 300,
+      "requests_failed": 0,
+      "status_histogram": {
+        "200": 300
+      },
+      "latency_ms_ok": {
+        "min": 1.789,
+        "p50": 5.24,
+        "p95": 6.878,
+        "p99": 9.054,
+        "max": 20.103,
+        "mean": 5.379
+      },
+      "hnsw_ef_search": 64,
+      "target_qps": 15.0,
+      "warmup_s": 5.0,
+      "duration_s": 20.0,
+      "achieved_qps": 15.0,
+      "note": "Lowest p50 this run"
+    },
+    {
+      "requests_total": 300,
+      "requests_ok": 300,
+      "requests_failed": 0,
+      "status_histogram": {
+        "200": 300
+      },
+      "latency_ms_ok": {
+        "min": 1.787,
+        "p50": 6.134,
+        "p95": 7.263,
+        "p99": 9.482,
+        "max": 12.022,
+        "mean": 5.874
+      },
+      "hnsw_ef_search": 96,
+      "target_qps": 15.0,
+      "warmup_s": 5.0,
+      "duration_s": 20.0,
+      "achieved_qps": 15.0,
+      "note": "Highest p50 this run"
+    }
+  ]
+}

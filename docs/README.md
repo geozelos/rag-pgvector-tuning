@@ -12,6 +12,7 @@ The main **[README](../README.md)** is the entry point (quick start, configurati
 | [Metadata storage and filters](recipes/metadata-and-filters.md) | JSON `metadata` on chunks + `metadata_filter` on retrieve |
 | [IVFFlat profile and migrations](recipes/ivfflat-profile.md) | Move from default HNSW to IVFFlat-oriented setup |
 | [Load testing and tuner](recipes/load-testing-and-tuner.md) | Sustained `/retrieve` traffic for `/tuner/recommend` |
+| [Benchmark ef_search latency](recipes/benchmark-latency.md) | Reproducible p50/p99 table for README and `docs/benchmarks/` |
 | [Recall smoke script](recipes/eval-recall.md) | Tiny labeled ingest + retrieve check |
 | [API hardening checklist](recipes/api-hardening.md) | Tenant requirement, CORS, auth, rate limit, hide `/docs` |
 | [Troubleshooting](recipes/troubleshooting.md) | Common errors (dimension, migrations, DB URL, Compose) |

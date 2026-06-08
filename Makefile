@@ -12,6 +12,8 @@ export DATABASE_URL ?= postgresql://rag:rag@localhost:5433/rag
 help: ## Show available targets
 	@echo "rag-pgvector-tuning — common tasks"
 	@echo ""
+	@echo "  Tip: if \`docker compose\` fails, use COMPOSE=docker-compose (e.g. make up COMPOSE=docker-compose)"
+	@echo ""
 	@grep -E '^[a-zA-Z0-9_.-]+:.*?## ' $(MAKEFILE_LIST) | sort | sed 's/Makefile://' | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: up
@@ -60,3 +62,15 @@ security: ## Bandit + pip-audit (matches CI security job shape)
 .PHONY: openapi-snapshot
 openapi-snapshot: ## Regenerate tests/fixtures/openapi.json after API schema changes
 	UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest tests/test_openapi_contract.py -q
+
+.PHONY: seed-demo
+seed-demo: ## Seed synthetic benchmark corpus (needs running API)
+	uv run python scripts/seed_demo_corpus.py --chunks 400 --tenant-id demo
+
+.PHONY: benchmark-latency
+benchmark-latency: ## Run ef_search latency benchmark and write docs/benchmarks/*
+	uv run python scripts/benchmark_ef_search.py --tenant-id demo --corpus-chunks 400
+
+.PHONY: readme-assets
+readme-assets: ## Regenerate docs/assets/*.png from live retrieve responses
+	uv run --with pillow python scripts/generate_readme_assets.py

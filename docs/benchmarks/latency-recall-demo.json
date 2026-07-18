@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generated_at_utc": "2026-07-18 11:35:54 UTC",
+    "generated_at_utc": "2026-07-18 11:39:42 UTC",
     "dry_run": false,
     "base_url": "http://127.0.0.1:8000",
     "tenant_id": "demo",
@@ -14,87 +14,87 @@
   "results": [
     {
       "hnsw_ef_search": 8,
-      "p50_ms": 1.023,
-      "p99_ms": 1.573,
-      "mean_ms": 1.038,
+      "p50_ms": 0.842,
+      "p99_ms": 1.212,
+      "mean_ms": 0.852,
       "samples": 25,
-      "recall_at_k": 0.267,
+      "recall_at_k": 0.067,
       "recall_per_query": [
         0.0,
-        0.4,
-        0.4
+        0.2,
+        0.0
       ],
       "recall_queries": 3
     },
     {
       "hnsw_ef_search": 16,
-      "p50_ms": 0.983,
-      "p99_ms": 1.367,
-      "mean_ms": 1.018,
+      "p50_ms": 0.852,
+      "p99_ms": 1.046,
+      "mean_ms": 0.836,
       "samples": 25,
-      "recall_at_k": 0.3,
+      "recall_at_k": 0.067,
       "recall_per_query": [
         0.0,
-        0.4,
-        0.5
+        0.2,
+        0.0
       ],
       "recall_queries": 3
     },
     {
       "hnsw_ef_search": 40,
-      "p50_ms": 1.142,
-      "p99_ms": 1.413,
-      "mean_ms": 1.153,
+      "p50_ms": 0.877,
+      "p99_ms": 1.354,
+      "mean_ms": 0.893,
       "samples": 25,
-      "recall_at_k": 0.4,
+      "recall_at_k": 0.067,
       "recall_per_query": [
         0.0,
-        0.4,
-        0.8
+        0.2,
+        0.0
       ],
       "recall_queries": 3
     },
     {
       "hnsw_ef_search": 96,
-      "p50_ms": 1.387,
-      "p99_ms": 1.897,
-      "mean_ms": 1.383,
+      "p50_ms": 0.894,
+      "p99_ms": 1.252,
+      "mean_ms": 0.921,
       "samples": 25,
-      "recall_at_k": 0.467,
+      "recall_at_k": 0.067,
       "recall_per_query": [
-        0.1,
-        0.4,
-        0.9
+        0.0,
+        0.2,
+        0.0
       ],
       "recall_queries": 3
     },
     {
       "hnsw_ef_search": 200,
-      "p50_ms": 1.346,
-      "p99_ms": 2.353,
-      "mean_ms": 1.392,
+      "p50_ms": 1.127,
+      "p99_ms": 1.31,
+      "mean_ms": 1.107,
       "samples": 25,
-      "recall_at_k": 0.467,
+      "recall_at_k": 0.533,
       "recall_per_query": [
-        0.1,
-        0.4,
-        0.9
+        0.2,
+        0.6,
+        0.8
       ],
       "recall_queries": 3
     }
   ],
   "oracle_doc_ids": {
     "HNSW ef_search latency recall approximate nearest neighbor pgvector query exploration": [
-      "4519",
       "4729",
+      "4519",
       "2699",
-      "11554",
       "4274",
+      "11554",
       "4309",
-      "11274",
       "5534",
+      "7599",
       "6339",
-      "7599"
+      "11274"
     ],
     "IVFFlat probes inverted lists scan approximate search postgresql vector index": [
       "2865",
@@ -113,12 +113,12 @@
       "2551",
       "9586",
       "10286",
-      "12246",
       "3461",
+      "12246",
       "3811",
       "10006",
-      "9481",
-      "3706"
+      "3706",
+      "9481"
     ]
   }
 }

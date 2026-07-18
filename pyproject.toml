@@ -1,6 +1,6 @@
 [project]
 name = "rag-pgvector-tuning"
-version = "1.3.0"
+version = "1.4.1"
 description = "Tune pgvector RAG retrieval latency in PostgreSQL: measure HNSW ef_search vs latency and recall with FastAPI, YAML profiles, telemetry, and make demo charts."
 readme = "README.md"
 license = "MIT"

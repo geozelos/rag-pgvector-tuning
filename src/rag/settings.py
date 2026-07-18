@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     embedding_backend: str = Field(
         default="demo",
         validation_alias=AliasChoices("EMBEDDING_BACKEND"),
-        description="demo (hash), openai (HTTP API), or local (OpenAI-compatible HTTP, e.g. Ollama/TEI).",
+        description="demo (feature-hash), openai (HTTP API), or local (OpenAI-compatible HTTP, e.g. Ollama/TEI).",
     )
     openai_api_key: str | None = Field(
         default=None,

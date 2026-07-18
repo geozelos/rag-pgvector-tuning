@@ -155,7 +155,7 @@ uv run pip-audit -r /tmp/deps-audit.txt
 **Findings**
 
 - **Global in-memory tuner / telemetry** — callers affect **shared** process state.
-- **Demo embeddings** are deterministic hashes — **not** a security boundary for semantic secrecy.
+- **Demo embeddings** are deterministic feature hashes — **not** a security boundary for semantic secrecy.
 - **SSRF:** The app does **not** fetch user-supplied URLs today.
 
 **Watchouts**

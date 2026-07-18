@@ -279,10 +279,8 @@ def _markdown_report(payload: dict[str, Any]) -> str:
         [
             "",
             "> **Disclaimer:** Numbers depend on hardware, corpus size, and concurrent load.",
-            "> At ~400 demo chunks, `ef_search` spread is often small — increase corpus size for",
-            "> clearer separation. With `EMBEDDING_BACKEND=demo`, rankings are not semantic;",
-            "> this table shows **latency knobs**, not recall quality. For recall checks see",
-            "> [`scripts/eval_recall.py`](../../scripts/eval_recall.py).",
+            "> Prefer `make demo` for a latency × recall chart. This script is a load-based",
+            "> latency sweep only. Demo embeddings use offline feature hashing (topical overlap).",
             "",
             "## Reproduce",
             "",
@@ -295,8 +293,8 @@ def _markdown_report(payload: dict[str, Any]) -> str:
             "Or directly:",
             "",
             "```bash",
-            "uv run python scripts/seed_demo_corpus.py --chunks 400 --tenant-id demo",
-            "uv run python scripts/benchmark_ef_search.py --tenant-id demo",
+            "uv run python scripts/seed_demo_corpus.py --chunks 2000 --tenant-id demo",
+            "uv run python scripts/benchmark_ef_search.py --tenant-id demo --corpus-chunks 2000",
             "```",
             "",
         ]

@@ -2,7 +2,7 @@
 schema_version: "1"
 max_delta_ef_search_per_step: 8
 max_delta_ivfflat_probes_per_step: 2
-min_ef_search: 16
+min_ef_search: 8
 max_ef_search: 200
 min_ivfflat_probes: 1
 max_ivfflat_probes: 50

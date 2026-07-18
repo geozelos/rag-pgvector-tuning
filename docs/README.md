@@ -8,11 +8,11 @@ The main **[README](../README.md)** is the entry point (quick start, configurati
 | ------ | ----------- |
 | [Full stack in Docker](recipes/full-stack-docker.md) | API + Postgres via Compose; quickest demo |
 | [Local API, Docker Postgres](recipes/local-api-docker-postgres.md) | Debug Python on the host, DB in a container |
-| [Real embeddings (OpenAI / local)](recipes/real-embeddings.md) | Swap out hash `demo` vectors for semantic search |
+| [Real embeddings (OpenAI / local)](recipes/real-embeddings.md) | Swap offline feature-hash `demo` vectors for provider embeddings |
 | [Metadata storage and filters](recipes/metadata-and-filters.md) | JSON `metadata` on chunks + `metadata_filter` on retrieve |
 | [IVFFlat profile and migrations](recipes/ivfflat-profile.md) | Move from default HNSW to IVFFlat-oriented setup |
 | [Load testing and tuner](recipes/load-testing-and-tuner.md) | Sustained `/retrieve` traffic for `/tuner/recommend` |
-| [Benchmark ef_search latency](recipes/benchmark-latency.md) | Reproducible p50/p99 table for README and `docs/benchmarks/` |
+| [Benchmark ef_search latency](recipes/benchmark-latency.md) | Load-based p50/p99 table; also see `make demo` for latency × recall |
 | [Recall smoke script](recipes/eval-recall.md) | Tiny labeled ingest + retrieve check |
 | [API hardening checklist](recipes/api-hardening.md) | Tenant requirement, CORS, auth, rate limit, hide `/docs` |
 | [Troubleshooting](recipes/troubleshooting.md) | Common errors (dimension, migrations, DB URL, Compose) |

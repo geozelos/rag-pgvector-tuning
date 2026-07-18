@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 class EmbeddingModelConfig(BaseModel):
     """Embedding settings: ``embedding_dim`` must match the ``vector(N)`` column / migration."""
 
-    model_id: str = "demo-hash-embedding"
+    model_id: str = "demo-feature-hash-embedding"
     embedding_dim: int = Field(ge=16, le=8192)
 
 

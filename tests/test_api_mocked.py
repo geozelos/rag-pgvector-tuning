@@ -353,9 +353,30 @@ def test_patch_runtime_ivfflat_probes(http_client_mock_db: tuple[TestClient, obj
 
 def test_patch_runtime_hnsw_out_of_bounds(http_client_mock_db: tuple[TestClient, object]) -> None:
     client, _conn = http_client_mock_db
-    r = client.patch("/config/runtime-search", json={"hnsw_ef_search": 8})
+    r = client.patch("/config/runtime-search", json={"hnsw_ef_search": 4})
     assert r.status_code == 400
     assert r.json()["detail"] == "Invalid runtime search override."
+
+
+def test_retrieve_exact_disables_index_scan(http_client_mock_db: tuple[TestClient, object]) -> None:
+    client, conn = http_client_mock_db
+    r = client.post("/retrieve", json={"query": "q", "k": 3, "exact": True})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["exact"] is True
+    assert body["hnsw_ef_search"] is None
+    executed = " ".join(str(c.args[0]) for c in conn.execute.await_args_list)
+    assert "enable_indexscan" in executed
+    assert "enable_bitmapscan" in executed
+
+
+def test_retrieve_approx_disables_seqscan(http_client_mock_db: tuple[TestClient, object]) -> None:
+    client, conn = http_client_mock_db
+    r = client.post("/retrieve", json={"query": "q", "k": 3, "exact": False})
+    assert r.status_code == 200
+    assert r.json()["exact"] is False
+    executed = " ".join(str(c.args[0]) for c in conn.execute.await_args_list)
+    assert "enable_seqscan" in executed
 
 
 def test_patch_runtime_ivfflat_probes_out_of_bounds(http_client_mock_db: tuple[TestClient, object]) -> None:

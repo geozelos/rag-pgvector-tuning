@@ -1,6 +1,6 @@
 # Recipe: Real embeddings (OpenAI or local HTTP)
 
-**Goal:** Use semantic vectors instead of the default **`demo`** hash embeddings.
+**Goal:** Use provider semantic vectors instead of the default offline **`demo`** feature-hash embeddings.
 
 ## Rules
 

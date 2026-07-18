@@ -11,7 +11,7 @@ FastAPI application: chunk ingestion, vector similarity search, and physical-lay
     - ``GET /health`` — liveness (process only; does not query the database).
     - ``GET /ready`` — readiness: database connectivity, pgvector extension, ``chunks`` table.
     - ``GET /config/active-profile`` — active YAML profile and effective search params.
-    - ``POST /ingest/chunks`` — upsert chunks; vectors from configured :mod:`rag.embedding_backend` (demo hash, OpenAI, or local HTTP).
+    - ``POST /ingest/chunks`` — upsert chunks; vectors from configured :mod:`rag.embedding_backend` (demo feature-hash, OpenAI, or local HTTP).
     - ``POST /retrieve`` — k-NN order by cosine distance (pgvector ``<=>``).
     - ``GET /telemetry/summary`` — recent ingest/retrieve stats + table row count.
     - ``PATCH /config/runtime-search`` — set/clear in-memory overrides (whitelist-checked).
@@ -390,6 +390,13 @@ class RetrievePayload(BaseModel):
         default=None,
         description="JSON object matched with ``metadata @> filter`` (AND semantics on keys present).",
     )
+    exact: bool = Field(
+        default=False,
+        description=(
+            "If true, disable index scans for this transaction (sequential scan) so results "
+            "are exact cosine order — useful as an oracle for recall demos. Slower on large corpora."
+        ),
+    )
 
 
 @router.post("/retrieve")
@@ -438,7 +445,15 @@ async def retrieve(req: Request, body: RetrievePayload) -> dict[str, Any]:
 
     async with pl.acquire() as conn:
         async with conn.transaction():
-            await apply_search_session_params(conn, profile, tuner.overrides)
+            if body.exact:
+                # Exact cosine order for recall oracles (lab / eval), not production default.
+                await conn.execute("SELECT set_config('enable_indexscan', 'off', true)")
+                await conn.execute("SELECT set_config('enable_bitmapscan', 'off', true)")
+            else:
+                # Keep ANN on the vector index. High hnsw.ef_search can make the planner
+                # prefer seq-scan+sort (looks like "slow + perfect recall") and hide the knob.
+                await conn.execute("SELECT set_config('enable_seqscan', 'off', true)")
+                await apply_search_session_params(conn, profile, tuner.overrides)
             rows = await conn.fetch(sql, *sql_params)
 
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
@@ -446,8 +461,8 @@ async def retrieve(req: Request, body: RetrievePayload) -> dict[str, Any]:
         duration_ms=elapsed_ms,
         k=body.k,
         index_family=profile.index_family,
-        ef_search=ef if profile.index_family == "hnsw" else None,
-        ivfflat_probes=probes if profile.index_family == "ivfflat" else None,
+        ef_search=None if body.exact else (ef if profile.index_family == "hnsw" else None),
+        ivfflat_probes=None if body.exact else (probes if profile.index_family == "ivfflat" else None),
         filter_tenant_id=body.tenant_id,
         filter_source_type=body.source_type,
         filter_metadata=body.metadata_filter,
@@ -456,8 +471,9 @@ async def retrieve(req: Request, body: RetrievePayload) -> dict[str, Any]:
     return {
         "profile": name,
         "index_family": profile.index_family,
-        "hnsw_ef_search": ef if profile.index_family == "hnsw" else None,
-        "ivfflat_probes": probes if profile.index_family == "ivfflat" else None,
+        "exact": body.exact,
+        "hnsw_ef_search": None if body.exact else (ef if profile.index_family == "hnsw" else None),
+        "ivfflat_probes": None if body.exact else (probes if profile.index_family == "ivfflat" else None),
         "duration_ms": elapsed_ms,
         "results": [dict(r) for r in rows],
     }

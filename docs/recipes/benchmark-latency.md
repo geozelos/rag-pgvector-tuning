@@ -44,4 +44,5 @@ uv run python scripts/benchmark_ef_search.py \
 
 The benchmark records API **`duration_ms`** from `/retrieve` JSON responses (p50/p99 under paced load), not raw HTTP round-trip time. Requires at least `--corpus-chunks` rows in the DB — run **`make seed-demo`** first.
 
-With **`demo`** embeddings, the table shows **latency knobs**, not semantic recall. At ~400 chunks, `ef_search` spread is often small. For recall smoke checks see [eval-recall.md](eval-recall.md).
+With **`demo`** embeddings (offline feature hashing), topical overlap is preserved for lab demos.
+For a latency × recall chart prefer `make demo`. For a tiny labeled smoke check see [eval-recall.md](eval-recall.md).

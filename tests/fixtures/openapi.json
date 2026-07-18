@@ -73,6 +73,12 @@
       "RetrievePayload": {
         "description": "Search request: embed ``query`` with the same backend used at ingest.",
         "properties": {
+          "exact": {
+            "default": false,
+            "description": "If true, disable index scans for this transaction (sequential scan) so results are exact cosine order \u2014 useful as an oracle for recall demos. Slower on large corpora.",
+            "title": "Exact",
+            "type": "boolean"
+          },
           "k": {
             "default": 10,
             "maximum": 200.0,

@@ -3,8 +3,8 @@
 
 Requires a running API (``uvicorn``). Uses ``POST /ingest/chunks`` then ``POST /retrieve``.
 
-**Demo embeddings** (``EMBEDDING_BACKEND=demo``): vectors are hash-derived, so ranked order is **not**
-semantic—recall numbers only sanity-check plumbing (filters, HTTP, pgvector wiring).
+**Demo embeddings** (``EMBEDDING_BACKEND=demo``): offline feature-hash vectors preserve topical
+overlap for lab demos. For production-quality recall, use OpenAI / local HTTP backends.
 
 With **real embeddings** (OpenAI / local HTTP), recall@k measures whether expected documents appear in
 the top-``k`` rows for each query (cheap offline-ish evaluation; not a full benchmark product).
@@ -132,7 +132,7 @@ def main() -> int:
                     "recall_at_k": recall,
                     "k": args.k,
                     "details": details,
-                    "note": "With EMBEDDING_BACKEND=demo, recall is not semantic—use real backends for meaningful scores.",
+                    "note": "demo backend uses offline feature-hash embeddings; use openai/local for production recall.",
                 },
                 indent=2,
             ),

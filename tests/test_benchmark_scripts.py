@@ -9,7 +9,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_SCRIPT = REPO_ROOT / "scripts" / "benchmark_ef_search.py"
+DEMO_SCRIPT = REPO_ROOT / "scripts" / "demo_latency_recall.py"
 RESULTS_JSON = REPO_ROOT / "docs" / "benchmarks" / "results.json"
+DEMO_JSON = REPO_ROOT / "docs" / "benchmarks" / "latency-recall-demo.json"
 
 
 def test_benchmark_dry_run_does_not_overwrite_committed_results() -> None:
@@ -38,3 +40,33 @@ def test_benchmark_dry_run_json_preview() -> None:
     payload = json.loads(proc.stdout)
     assert payload["meta"]["dry_run"] is True
     assert payload["meta"]["latency_metric"] == "api_duration_ms"
+
+
+def test_demo_latency_recall_dry_run_does_not_write_artifacts() -> None:
+    before = DEMO_JSON.read_text(encoding="utf-8") if DEMO_JSON.exists() else None
+    proc = subprocess.run(
+        [sys.executable, str(DEMO_SCRIPT), "--dry-run"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "ef_search" in proc.stdout
+    assert "Dry-run" in proc.stdout
+    if before is not None:
+        assert DEMO_JSON.read_text(encoding="utf-8") == before
+
+
+def test_demo_latency_recall_dry_run_json() -> None:
+    proc = subprocess.run(
+        [sys.executable, str(DEMO_SCRIPT), "--dry-run", "--json"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    payload = json.loads(proc.stdout)
+    assert payload["meta"]["dry_run"] is True
+    assert len(payload["results"]) >= 2
+    assert "recall_at_k" in payload["results"][0]

@@ -1,0 +1,124 @@
+{
+  "meta": {
+    "generated_at_utc": "2026-07-18 11:35:54 UTC",
+    "dry_run": false,
+    "base_url": "http://127.0.0.1:8000",
+    "tenant_id": "demo",
+    "k": 10,
+    "samples": 25,
+    "warmup": 3,
+    "corpus_chunks": 10000,
+    "recall_method": "exact_seqscan_topk_doc_id",
+    "embedding_note": "demo feature-hash (offline)"
+  },
+  "results": [
+    {
+      "hnsw_ef_search": 8,
+      "p50_ms": 1.023,
+      "p99_ms": 1.573,
+      "mean_ms": 1.038,
+      "samples": 25,
+      "recall_at_k": 0.267,
+      "recall_per_query": [
+        0.0,
+        0.4,
+        0.4
+      ],
+      "recall_queries": 3
+    },
+    {
+      "hnsw_ef_search": 16,
+      "p50_ms": 0.983,
+      "p99_ms": 1.367,
+      "mean_ms": 1.018,
+      "samples": 25,
+      "recall_at_k": 0.3,
+      "recall_per_query": [
+        0.0,
+        0.4,
+        0.5
+      ],
+      "recall_queries": 3
+    },
+    {
+      "hnsw_ef_search": 40,
+      "p50_ms": 1.142,
+      "p99_ms": 1.413,
+      "mean_ms": 1.153,
+      "samples": 25,
+      "recall_at_k": 0.4,
+      "recall_per_query": [
+        0.0,
+        0.4,
+        0.8
+      ],
+      "recall_queries": 3
+    },
+    {
+      "hnsw_ef_search": 96,
+      "p50_ms": 1.387,
+      "p99_ms": 1.897,
+      "mean_ms": 1.383,
+      "samples": 25,
+      "recall_at_k": 0.467,
+      "recall_per_query": [
+        0.1,
+        0.4,
+        0.9
+      ],
+      "recall_queries": 3
+    },
+    {
+      "hnsw_ef_search": 200,
+      "p50_ms": 1.346,
+      "p99_ms": 2.353,
+      "mean_ms": 1.392,
+      "samples": 25,
+      "recall_at_k": 0.467,
+      "recall_per_query": [
+        0.1,
+        0.4,
+        0.9
+      ],
+      "recall_queries": 3
+    }
+  ],
+  "oracle_doc_ids": {
+    "HNSW ef_search latency recall approximate nearest neighbor pgvector query exploration": [
+      "4519",
+      "4729",
+      "2699",
+      "11554",
+      "4274",
+      "4309",
+      "11274",
+      "5534",
+      "6339",
+      "7599"
+    ],
+    "IVFFlat probes inverted lists scan approximate search postgresql vector index": [
+      "2865",
+      "12395",
+      "11460",
+      "4160",
+      "2775",
+      "8065",
+      "6400",
+      "6765",
+      "5700",
+      "10305"
+    ],
+    "PostgreSQL pgvector embedding column cosine distance similarity retrieval chunks": [
+      "6016",
+      "2551",
+      "9586",
+      "10286",
+      "12246",
+      "3461",
+      "3811",
+      "10006",
+      "9481",
+      "3706"
+    ]
+  }
+}

@@ -1,5 +1,5 @@
 """
-Pluggable embedding backends: demo (hash), OpenAI HTTP API, and local OpenAI-compatible HTTP.
+Pluggable embedding backends: demo (feature hashing), OpenAI HTTP API, and local OpenAI-compatible HTTP.
 
 Configure with ``EMBEDDING_BACKEND`` and related environment variables (see :class:`rag.settings.Settings`).
 """
@@ -26,7 +26,7 @@ class EmbeddingBackend(Protocol):
 
 
 class DemoEmbeddingBackend:
-    """Deterministic hash-based vectors (see :func:`rag.embeddings.demo_embedding`)."""
+    """Deterministic bag-of-words feature-hash vectors (see :func:`rag.embeddings.demo_embedding`)."""
 
     async def embed(self, text: str, dim: int) -> list[float]:
         return demo_embedding(text, dim)

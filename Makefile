@@ -64,12 +64,25 @@ openapi-snapshot: ## Regenerate tests/fixtures/openapi.json after API schema cha
 	UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest tests/test_openapi_contract.py -q
 
 .PHONY: seed-demo
-seed-demo: ## Seed synthetic benchmark corpus (needs running API)
-	uv run python scripts/seed_demo_corpus.py --chunks 400 --tenant-id demo
+seed-demo: ## Seed dense demo corpus (needs running API; default 10000 chunks)
+	uv run python scripts/seed_demo_corpus.py --chunks 10000 --tenant-id demo
 
 .PHONY: benchmark-latency
 benchmark-latency: ## Run ef_search latency benchmark and write docs/benchmarks/*
-	uv run python scripts/benchmark_ef_search.py --tenant-id demo --corpus-chunks 400
+	uv run python scripts/benchmark_ef_search.py --tenant-id demo --corpus-chunks 10000
+
+.PHONY: demo
+demo: ## Lab wow: seed + modest HNSW rebuild + latency×recall chart (API must be up)
+	@uv run python -c "import time,httpx;\
+u='http://127.0.0.1:8000/ready';\
+\
+[(time.sleep(1), None) for _ in range(60) if httpx.get(u,timeout=2).status_code!=200];\
+assert httpx.get(u,timeout=2).status_code==200, 'API not ready'"
+	uv run python scripts/seed_demo_corpus.py --chunks 10000 --tenant-id demo
+	uv run python scripts/rebuild_demo_hnsw.py --m 4 --ef-construction 8
+	uv run --with pillow python scripts/demo_latency_recall.py --sync-readme --corpus-chunks 10000 --k 10
+	@echo ""
+	@echo "Chart: docs/assets/latency-recall-chart.txt (and .png if Pillow installed)"
 
 .PHONY: readme-assets
 readme-assets: ## Regenerate docs/assets/*.png from live retrieve responses

@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
-Seed a reproducible demo corpus via POST /ingest/chunks for latency benchmarks.
+Seed a reproducible demo corpus via POST /ingest/chunks for latency / recall demos.
 
 Uses **httpx** from the default install (**`uv sync`**).
+
+Builds dense topical clusters (many near-duplicate distractors) so approximate HNSW
+search can diverge from exact cosine order — needed for ``ef_search`` ↔ recall demos.
 """
 
 from __future__ import annotations
@@ -15,35 +18,36 @@ from typing import Any
 
 import httpx
 
-DEFAULT_TOPICS = (
-    "pgvector stores embeddings in PostgreSQL for semantic search.",
-    "HNSW ef_search trades retrieval latency against recall at query time.",
-    "IVFFlat probes control how many index lists are scanned per query.",
-    "RAG pipelines retrieve relevant chunks before calling an LLM.",
-    "Vector indexes accelerate nearest-neighbor search over embeddings.",
-    "Cosine distance is common for normalized embedding vectors.",
-    "Metadata filters narrow candidates before vector ordering.",
-    "YAML profiles version default search knobs for different workloads.",
-    "Telemetry percentiles guide automated tuning of session parameters.",
-    "Postgres extensions keep retrieval close to transactional data.",
+# Shared vocabulary per cluster → many near neighbors in feature-hash space.
+CLUSTER_STEMS = (
+    "HNSW ef_search latency recall approximate nearest neighbor pgvector query exploration",
+    "IVFFlat probes inverted lists scan approximate search postgresql vector index",
+    "PostgreSQL pgvector embedding column cosine distance similarity retrieval chunks",
+    "metadata filter jsonb containment tenant scope before vector ordering candidates",
+    "YAML profile hnsw ivfflat search knobs workload defaults guardrails tuner",
 )
 
 
 def _chunk_rows(*, total: int, tenant_id: str, source_type: str) -> list[dict[str, Any]]:
+    """Generate ``total`` near-duplicate cluster variants (dense ANN neighborhood)."""
     rows: list[dict[str, Any]] = []
-    topics = list(DEFAULT_TOPICS)
+    stems = list(CLUSTER_STEMS)
     for i in range(total):
-        topic = topics[i % len(topics)]
-        doc_id = f"bench-doc-{i // 5:04d}"
-        chunk_index = i % 5
+        stem = stems[i % len(stems)]
+        # Slight wording drift keeps vectors close but not identical.
+        content = (
+            f"{stem}. Variant {i} near-duplicate cluster member for ANN stress. "
+            f"Keywords echo: {stem.split()[i % 5]} {stem.split()[(i + 2) % 7]}."
+        )
+        doc_id = f"cluster-{i % len(stems):02d}-doc-{i // 5:05d}"
         rows.append(
             {
                 "tenant_id": tenant_id,
                 "source_type": source_type,
                 "doc_id": doc_id,
-                "chunk_index": chunk_index,
-                "content": f"{topic} chunk {i} for benchmark corpus sizing.",
-                "metadata": {"bench": True, "seq": i},
+                "chunk_index": i % 5,
+                "content": content,
+                "metadata": {"bench": True, "seq": i, "cluster": i % len(stems)},
             }
         )
     return rows
@@ -86,16 +90,16 @@ def _post_batches(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Seed synthetic chunks for pgvector latency benchmarks.",
+        description="Seed dense synthetic chunks for pgvector latency / recall demos.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s --chunks 400
+  %(prog)s --chunks 10000
   %(prog)s --base-url http://127.0.0.1:8000 --tenant-id demo --chunks 300 --json
 """,
     )
     parser.add_argument("--base-url", default="http://127.0.0.1:8000", help="API origin")
-    parser.add_argument("--chunks", type=int, default=400, help="Total chunks to upsert")
+    parser.add_argument("--chunks", type=int, default=10000, help="Total chunks to upsert")
     parser.add_argument("--batch-size", type=int, default=100, help="Chunks per ingest request")
     parser.add_argument("--tenant-id", default="demo", help="tenant_id for all chunks")
     parser.add_argument("--source-type", default="doc", help="source_type for all chunks")

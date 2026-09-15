@@ -79,6 +79,18 @@
             "title": "Exact",
             "type": "boolean"
           },
+          "hnsw_ef_search": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per-request HNSW ef_search for this retrieve only. Must be within tuner_guardrails.yaml bounds and on the runtime whitelist. Does not change process-wide PATCH /config/runtime-search.",
+            "title": "Hnsw Ef Search"
+          },
           "k": {
             "default": 10,
             "maximum": 200.0,

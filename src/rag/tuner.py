@@ -61,6 +61,15 @@ class PhysicalTuner:
         probes = self.overrides.ivfflat_probes or prof.search.ivfflat_probes
         return ef, probes
 
+    def session_overrides(self, *, hnsw_ef_search: int | None = None) -> RuntimeOverrides:
+        """Overrides for one retrieve. Request ``hnsw_ef_search`` wins; process state is not mutated."""
+        if hnsw_ef_search is not None:
+            self._clamp_ef(hnsw_ef_search)
+        return RuntimeOverrides(
+            hnsw_ef_search=hnsw_ef_search if hnsw_ef_search is not None else self.overrides.hnsw_ef_search,
+            ivfflat_probes=self.overrides.ivfflat_probes,
+        )
+
     def set_override(
         self,
         *,

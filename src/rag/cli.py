@@ -74,6 +74,7 @@ Environment:
 Examples:
   rag-cli ingest --file chunks.json
   rag-cli retrieve --query "What is ef_search?" --k 5 --tenant-id demo
+  rag-cli retrieve --query "What is ef_search?" --k 5 --tenant-id demo --ef-search 96
   rag-cli tune-step --auto-apply
   curl -s chunks.json | rag-cli ingest --file -
 """,
@@ -106,6 +107,14 @@ Examples:
     retrieve.add_argument("--k", type=int, default=10)
     retrieve.add_argument("--tenant-id", default=None)
     retrieve.add_argument("--source-type", default=None)
+    retrieve.add_argument(
+        "--ef-search",
+        type=int,
+        default=None,
+        dest="hnsw_ef_search",
+        metavar="N",
+        help="Per-request hnsw_ef_search (does not change process-wide runtime override)",
+    )
     retrieve.add_argument(
         "--metadata-filter",
         default=None,
@@ -146,6 +155,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     args.metadata_filter,
                     label="metadata_filter",
                 )
+            if args.hnsw_ef_search is not None:
+                payload["hnsw_ef_search"] = args.hnsw_ef_search
             r = client.post("/retrieve", json=payload)
             return _handle_response(r)
 

@@ -379,6 +379,57 @@ def test_retrieve_approx_disables_seqscan(http_client_mock_db: tuple[TestClient,
     assert "enable_seqscan" in executed
 
 
+def test_retrieve_per_request_hnsw_ef_search_sets_session_and_echoes(
+    http_client_mock_db: tuple[TestClient, object],
+) -> None:
+    client, conn = http_client_mock_db
+    r = client.post("/retrieve", json={"query": "q", "k": 3, "hnsw_ef_search": 96})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["hnsw_ef_search"] == 96
+    assert client.app.state.tuner.overrides.hnsw_ef_search is None
+    executed = [(c.args[0], c.args[1] if len(c.args) > 1 else None) for c in conn.execute.await_args_list]
+    assert any("hnsw.ef_search" in str(sql) and val == "96" for sql, val in executed)
+
+
+def test_retrieve_per_request_hnsw_ef_search_wins_over_process_override(
+    http_client_mock_db: tuple[TestClient, object],
+) -> None:
+    client, conn = http_client_mock_db
+    patch = client.patch("/config/runtime-search", json={"hnsw_ef_search": 48})
+    assert patch.status_code == 200
+    r = client.post("/retrieve", json={"query": "q", "k": 3, "hnsw_ef_search": 96})
+    assert r.status_code == 200
+    assert r.json()["hnsw_ef_search"] == 96
+    assert client.app.state.tuner.overrides.hnsw_ef_search == 48
+    executed = [(c.args[0], c.args[1] if len(c.args) > 1 else None) for c in conn.execute.await_args_list]
+    assert any("hnsw.ef_search" in str(sql) and val == "96" for sql, val in executed)
+
+
+def test_retrieve_per_request_hnsw_ef_search_out_of_bounds(
+    http_client_mock_db: tuple[TestClient, object],
+) -> None:
+    client, _conn = http_client_mock_db
+    r = client.post("/retrieve", json={"query": "q", "k": 3, "hnsw_ef_search": 4})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Invalid runtime search override."
+
+
+def test_retrieve_per_request_hnsw_ef_search_whitelist_denied(
+    http_client_mock_db: tuple[TestClient, object],
+) -> None:
+    client, _conn = http_client_mock_db
+    b = client.app.state.bundle
+    client.app.state.bundle = AppYamlConfig(
+        embedding=b.embedding,
+        profiles_doc=b.profiles_doc,
+        guardrails=b.guardrails.model_copy(update={"whitelist_runtime_params": []}),
+    )
+    r = client.post("/retrieve", json={"query": "q", "k": 3, "hnsw_ef_search": 44})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Invalid runtime search override."
+
+
 def test_patch_runtime_ivfflat_probes_out_of_bounds(http_client_mock_db: tuple[TestClient, object]) -> None:
     client, _conn = http_client_mock_db
     r = client.patch("/config/runtime-search", json={"ivfflat_probes": 99})

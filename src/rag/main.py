@@ -15,6 +15,7 @@ FastAPI application: chunk ingestion, vector similarity search, and physical-lay
     - ``POST /retrieve`` — k-NN order by cosine distance (pgvector ``<=>``).
     - ``GET /telemetry/summary`` — recent ingest/retrieve stats + table row count.
     - ``PATCH /config/runtime-search`` — set/clear in-memory overrides (whitelist-checked).
+    - ``POST /retrieve`` ``hnsw_ef_search`` — per-request HNSW knob (same bounds; does not mutate process state).
     - ``POST /tuner/recommend`` / ``POST /tuner/step`` — MVP tuner from in-process telemetry.
 """
 
@@ -397,6 +398,14 @@ class RetrievePayload(BaseModel):
             "are exact cosine order — useful as an oracle for recall demos. Slower on large corpora."
         ),
     )
+    hnsw_ef_search: int | None = Field(
+        default=None,
+        description=(
+            "Per-request HNSW ef_search for this retrieve only. Must be within "
+            "tuner_guardrails.yaml bounds and on the runtime whitelist. Does not change "
+            "process-wide PATCH /config/runtime-search."
+        ),
+    )
 
 
 @router.post("/retrieve")
@@ -423,7 +432,19 @@ async def retrieve(req: Request, body: RetrievePayload) -> dict[str, Any]:
     backend = embedding_backend(req)
     name, profile = tuner.active()
 
-    ef, probes = tuner.effective_search()
+    try:
+        if body.hnsw_ef_search is not None:
+            assert_param_whitelisted("hnsw.ef_search", bundle(req).guardrails)
+        session = tuner.session_overrides(hnsw_ef_search=body.hnsw_ef_search)
+    except ValueError as exc:
+        logger.warning("retrieve hnsw_ef_search rejected: %s", exc)
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid runtime search override.",
+        ) from None
+
+    ef = session.hnsw_ef_search or profile.search.hnsw_ef_search
+    probes = session.ivfflat_probes or profile.search.ivfflat_probes
     t0 = time.perf_counter()
     try:
         query_vec = await backend.embed(body.query, cfg_e.embedding_dim)
@@ -453,7 +474,7 @@ async def retrieve(req: Request, body: RetrievePayload) -> dict[str, Any]:
                 # Keep ANN on the vector index. High hnsw.ef_search can make the planner
                 # prefer seq-scan+sort (looks like "slow + perfect recall") and hide the knob.
                 await conn.execute("SELECT set_config('enable_seqscan', 'off', true)")
-                await apply_search_session_params(conn, profile, tuner.overrides)
+                await apply_search_session_params(conn, profile, session)
             rows = await conn.fetch(sql, *sql_params)
 
     elapsed_ms = (time.perf_counter() - t0) * 1000.0

@@ -161,6 +161,14 @@ def test_physical_tuner_clear_overrides() -> None:
     assert tuner.overrides.hnsw_ef_search is None
 
 
+def test_session_overrides_request_wins_without_mutating_process() -> None:
+    tuner = _hnsw_tuner()
+    tuner.set_override(hnsw_ef_search=48)
+    session = tuner.session_overrides(hnsw_ef_search=96)
+    assert session.hnsw_ef_search == 96
+    assert tuner.overrides.hnsw_ef_search == 48
+
+
 def test_ivfflat_recommend_increase_probes() -> None:
     tuner, _p, _g = make_ivfflat_tuner()
     telemetry = TelemetryCollector()

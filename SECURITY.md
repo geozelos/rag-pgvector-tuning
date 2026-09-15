@@ -23,6 +23,7 @@ Mappings are **qualitative** (code inspection). Earlier revisions used **OWASP T
 - **`GET /health`** and **`GET /ready`** are **always unauthenticated** (for probes); **`/ready`** does not grant data access but confirms DB/pgvector/table readiness.
 - **Ingest** can **overwrite** chunks by `(doc_id, chunk_index)` for **any** declared tenant string — multi-tenancy is **client-declared**, not cryptographically enforced.
 - **`PATCH /config/runtime-search`**, **`POST /tuner/*`**, **`POST /telemetry/ingest-backlog/clear`** affect **global** tuning/telemetry state for the process.
+- **`POST /retrieve` `hnsw_ef_search`** is a **per-request** session knob (same guardrails/whitelist as the PATCH). It does **not** mutate process state, but any caller who can retrieve can still sweep `ef_search` within bounds.
 - **OpenAPI `/docs` and `/redoc`** expose the attack surface — disable with **`DISABLE_OPENAPI_UI=true`** when exposing the API beyond trusted networks.
 
 **Mitigations (production-oriented)**

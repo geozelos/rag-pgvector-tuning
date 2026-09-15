@@ -56,13 +56,14 @@ No Pinecone. No LangChain maze. No OpenAI key for the default path.
      -H "Content-Type: application/json" \
      -d '{"query":"What is ef_search?","k":5,"tenant_id":"demo"}'
    ```
-3. **Override** `ef_search` (within [config/tuner_guardrails.yaml](config/tuner_guardrails.yaml)):
+3. **Retrieve with a per-request** `hnsw_ef_search` (within [config/tuner_guardrails.yaml](config/tuner_guardrails.yaml); does **not** change process-wide state):
    ```bash
-   curl -s -X PATCH http://127.0.0.1:8000/config/runtime-search \
-     -H "Content-Type: application/json" -d '{"hnsw_ef_search": 24}'
+   curl -s -X POST http://127.0.0.1:8000/retrieve \
+     -H "Content-Type: application/json" \
+     -d '{"query":"What is ef_search?","k":5,"tenant_id":"demo","hnsw_ef_search":24}'
    ```
-4. **Retrieve again** — compare `duration_ms`.
-5. Optional: `GET /telemetry/summary`, `POST /tuner/recommend`.
+4. Compare `duration_ms` and `hnsw_ef_search` with step 2.
+5. Optional: `PATCH /config/runtime-search` for a process-wide override, `GET /telemetry/summary`, `POST /tuner/recommend`.
 
 OpenAPI: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
@@ -109,6 +110,7 @@ make test / make integration / make security
 
 ```bash
 uv run rag-cli retrieve --query "What is ef_search?" --k 5 --tenant-id demo
+uv run rag-cli retrieve --query "What is ef_search?" --k 5 --tenant-id demo --ef-search 96
 uv run rag-cli tune-step --auto-apply
 ```
 

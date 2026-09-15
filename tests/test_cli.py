@@ -68,6 +68,26 @@ def test_cli_retrieve_success(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Ca
     assert out["profile"] == "default"
 
 
+def test_cli_retrieve_with_ef_search(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+        def post(self, path: str, json: dict | None = None, params: dict | None = None) -> _OkJsonResp:
+            captured["json"] = json
+            return _OkJsonResp({"hnsw_ef_search": 96, "results": []})
+
+    monkeypatch.setattr(cli_mod.httpx, "Client", FakeClient)
+    code = cli_mod.main(["retrieve", "--query", "hello", "--ef-search", "96"])
+    assert code == 0
+    assert captured["json"] == {"query": "hello", "k": 10, "hnsw_ef_search": 96}
+
+
 def test_cli_retrieve_with_metadata_filter(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     captured: dict[str, object] = {}
 

@@ -79,8 +79,8 @@ u='http://127.0.0.1:8000/ready';\
 [(time.sleep(1), None) for _ in range(60) if httpx.get(u,timeout=2).status_code!=200];\
 assert httpx.get(u,timeout=2).status_code==200, 'API not ready'"
 	uv run python scripts/seed_demo_corpus.py --chunks 10000 --tenant-id demo
-	uv run python scripts/rebuild_demo_hnsw.py --m 4 --ef-construction 8
-	uv run --with pillow python scripts/demo_latency_recall.py --sync-readme --corpus-chunks 10000 --k 10
+	uv run python scripts/rebuild_demo_hnsw.py --m 6 --ef-construction 16
+	uv run --with pillow python scripts/demo_latency_recall.py --sync-readme --corpus-chunks 10000 --k 20 --hnsw-m 6 --ef-construction 16
 	@echo ""
 	@echo "Chart: docs/assets/latency-recall-chart.txt (and .png if Pillow installed)"
 

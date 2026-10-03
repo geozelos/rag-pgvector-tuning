@@ -4,9 +4,10 @@ Lab-wow demo: sweep HNSW ef_search and report latency + recall@k.
 
 Zero API keys when the API uses EMBEDDING_BACKEND=demo (feature-hash embeddings).
 
-Recall methodology: for each gold query, take top-k ``doc_id``s at ``--oracle-ef``
-(default: max ef in the sweep) as ground truth, then measure fraction recovered
-at each lower ``ef_search`` (mean over queries).
+Recall methodology: for each gold query, take exact cosine top-k row ids
+(``exact=true``) as ground truth, then measure the fraction recovered at each
+``hnsw_ef_search`` (mean over queries). The knob is sent on ``POST /retrieve``
+and does not change process-wide tuner state.
 
 Writes:
   - docs/benchmarks/latency-recall-demo.md
@@ -33,27 +34,15 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_EF_VALUES = (8, 16, 40, 96, 200)
 SEED_SCRIPT = REPO_ROOT / "scripts" / "seed_demo_corpus.py"
 
-# Queries aimed at dense clusters in scripts/seed_demo_corpus.py
-GOLD_QUERIES: tuple[dict[str, str], ...] = (
-    {
-        "query": (
-            "HNSW ef_search latency recall approximate nearest neighbor "
-            "pgvector query exploration"
-        ),
-    },
-    {
-        "query": (
-            "IVFFlat probes inverted lists scan approximate search "
-            "postgresql vector index"
-        ),
-    },
-    {
-        "query": (
-            "PostgreSQL pgvector embedding column cosine distance "
-            "similarity retrieval chunks"
-        ),
-    },
-)
+
+def _gold_queries() -> tuple[dict[str, str], ...]:
+    """One query per seed cluster stem so recall tracks the similarity ladder."""
+    scripts = str(REPO_ROOT / "scripts")
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    from seed_demo_corpus import CLUSTER_STEMS
+
+    return tuple({"query": stem} for stem in CLUSTER_STEMS)
 
 
 def _headers(api_key: str | None) -> dict[str, str] | None:
@@ -76,20 +65,6 @@ def _wait_ready(base_url: str, api_key: str | None, timeout_s: float, attempts: 
     raise RuntimeError(f"API not ready at {url}")
 
 
-def _patch_ef(base_url: str, ef: int, api_key: str | None, timeout_s: float) -> None:
-    url = base_url.rstrip("/") + "/config/runtime-search"
-    with httpx.Client(timeout=timeout_s) as client:
-        r = client.patch(url, json={"hnsw_ef_search": ef}, headers=_headers(api_key))
-        r.raise_for_status()
-
-
-def _clear_overrides(base_url: str, api_key: str | None, timeout_s: float) -> None:
-    url = base_url.rstrip("/") + "/config/runtime-search"
-    with httpx.Client(timeout=timeout_s) as client:
-        r = client.patch(url, json={"clear_overrides": True}, headers=_headers(api_key))
-        r.raise_for_status()
-
-
 def _retrieve(
     *,
     base_url: str,
@@ -99,6 +74,7 @@ def _retrieve(
     api_key: str | None,
     timeout_s: float,
     exact: bool = False,
+    hnsw_ef_search: int | None = None,
 ) -> dict[str, Any]:
     url = base_url.rstrip("/") + "/retrieve"
     # Omit tenant_id on ANN sweeps: a selective tenant btree filter can make the
@@ -106,6 +82,8 @@ def _retrieve(
     body: dict[str, Any] = {"query": query, "k": k, "exact": exact}
     if tenant_id:
         body["tenant_id"] = tenant_id
+    if hnsw_ef_search is not None:
+        body["hnsw_ef_search"] = hnsw_ef_search
     with httpx.Client(timeout=timeout_s) as client:
         r = client.post(url, json=body, headers=_headers(api_key))
         r.raise_for_status()
@@ -205,10 +183,11 @@ def _build_oracle(
     k: int,
     api_key: str | None,
     timeout_s: float,
+    gold_queries: tuple[dict[str, str], ...],
 ) -> dict[str, list[str]]:
     """Top-k row ids per gold query via exact cosine order (``exact=true`` / seq scan)."""
     oracle: dict[str, list[str]] = {}
-    for gold in GOLD_QUERIES:
+    for gold in gold_queries:
         data = _retrieve(
             base_url=base_url,
             query=gold["query"],
@@ -238,9 +217,9 @@ def _measure_ef(
     samples: int,
     warmup: int,
     oracle: dict[str, list[str]],
+    gold_queries: tuple[dict[str, str], ...],
 ) -> dict[str, Any]:
-    _patch_ef(base_url, ef, api_key, timeout_s)
-    probe_query = GOLD_QUERIES[0]["query"]
+    probe_query = gold_queries[0]["query"]
     for _ in range(warmup):
         _retrieve(
             base_url=base_url,
@@ -249,6 +228,7 @@ def _measure_ef(
             tenant_id=None,
             api_key=api_key,
             timeout_s=timeout_s,
+            hnsw_ef_search=ef,
         )
 
     durations: list[float] = []
@@ -260,11 +240,12 @@ def _measure_ef(
             tenant_id=None,
             api_key=api_key,
             timeout_s=timeout_s,
+            hnsw_ef_search=ef,
         )
         durations.append(float(data["duration_ms"]))
 
     recalls: list[float] = []
-    for gold in GOLD_QUERIES:
+    for gold in gold_queries:
         data = _retrieve(
             base_url=base_url,
             query=gold["query"],
@@ -272,6 +253,7 @@ def _measure_ef(
             tenant_id=None,
             api_key=api_key,
             timeout_s=timeout_s,
+            hnsw_ef_search=ef,
         )
         recalls.append(_recall_at_k(_row_ids(data, k), oracle.get(gold["query"], [])))
 
@@ -296,8 +278,11 @@ def _markdown(payload: dict[str, Any], chart: str) -> str:
         "",
         "Offline **feature-hash** embeddings + topical corpus — no API keys.",
         "",
-        "**Recall:** mean fraction of exact (seq-scan) top-`k` `doc_id`s recovered "
+        "**Recall:** mean fraction of exact (seq-scan) top-`k` row ids recovered "
         "at each approximate `ef_search`.",
+        "",
+        "Each sweep point sends `hnsw_ef_search` on that `POST /retrieve` only. "
+        "It does not change process-wide tuner state.",
         "",
         "## Setup",
         "",
@@ -307,6 +292,7 @@ def _markdown(payload: dict[str, Any], chart: str) -> str:
         f"| API | `{meta['base_url']}` |",
         f"| Tenant | `{meta['tenant_id']}` |",
         f"| k | {meta['k']} |",
+        f"| HNSW build | m={meta.get('hnsw_m', 'n/a')}, ef_construction={meta.get('ef_construction', 'n/a')} |",
         f"| Oracle | `{meta['recall_method']}` |",
         f"| Samples / ef | {meta['samples']} (+ {meta['warmup']} warmup) |",
         f"| Corpus chunks | {meta['corpus_chunks']} |",
@@ -366,6 +352,13 @@ def main() -> int:
     parser.add_argument("--api-key", default=None)
     parser.add_argument("--timeout", type=float, default=60.0)
     parser.add_argument("--k", type=int, default=10)
+    parser.add_argument("--hnsw-m", type=int, default=None, help="HNSW m recorded in the report")
+    parser.add_argument(
+        "--ef-construction",
+        type=int,
+        default=None,
+        help="HNSW ef_construction recorded in the report",
+    )
     parser.add_argument("--samples", type=int, default=25, help="Latency samples per ef value")
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument(
@@ -422,6 +415,8 @@ def main() -> int:
                 "base_url": args.base_url,
                 "tenant_id": args.tenant_id,
                 "k": args.k,
+                "hnsw_m": args.hnsw_m,
+                "ef_construction": args.ef_construction,
                 "samples": args.samples,
                 "warmup": args.warmup,
                 "corpus_chunks": args.corpus_chunks,
@@ -453,12 +448,14 @@ def main() -> int:
         print(f"Seeding {args.corpus_chunks} chunks …", flush=True)
         subprocess.run(cmd, cwd=REPO_ROOT, check=True)
 
+    gold_queries = _gold_queries()
     print("Building exact (seq-scan) oracle …", flush=True)
     oracle = _build_oracle(
         base_url=args.base_url,
         k=args.k,
         api_key=args.api_key,
         timeout_s=args.timeout,
+        gold_queries=gold_queries,
     )
 
     results = [
@@ -471,10 +468,10 @@ def main() -> int:
             samples=args.samples,
             warmup=args.warmup,
             oracle=oracle,
+            gold_queries=gold_queries,
         )
         for ef in ef_values
     ]
-    _clear_overrides(args.base_url, args.api_key, args.timeout)
 
     payload = {
         "meta": {
@@ -483,6 +480,8 @@ def main() -> int:
             "base_url": args.base_url,
             "tenant_id": args.tenant_id,
             "k": args.k,
+            "hnsw_m": args.hnsw_m,
+            "ef_construction": args.ef_construction,
             "samples": args.samples,
             "warmup": args.warmup,
             "corpus_chunks": args.corpus_chunks,

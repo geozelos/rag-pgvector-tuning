@@ -39,26 +39,6 @@ def _headers(api_key: str | None) -> dict[str, str] | None:
     return {"X-API-Key": api_key}
 
 
-def _patch_ef_search(
-    *,
-    base_url: str,
-    ef_search: int,
-    api_key: str | None,
-    timeout_s: float,
-) -> None:
-    url = base_url.rstrip("/") + "/config/runtime-search"
-    with httpx.Client(timeout=timeout_s) as client:
-        r = client.patch(url, json={"hnsw_ef_search": ef_search}, headers=_headers(api_key))
-        r.raise_for_status()
-
-
-def _clear_overrides(*, base_url: str, api_key: str | None, timeout_s: float) -> None:
-    url = base_url.rstrip("/") + "/config/runtime-search"
-    with httpx.Client(timeout=timeout_s) as client:
-        r = client.patch(url, json={"clear_overrides": True}, headers=_headers(api_key))
-        r.raise_for_status()
-
-
 def _wait_ready(base_url: str, api_key: str | None, timeout_s: float, attempts: int = 30) -> None:
     url = base_url.rstrip("/") + "/ready"
     last_err: Exception | None = None
@@ -94,12 +74,15 @@ async def _run_load_duration_ms(
     api_key: str | None,
     concurrency: int,
     timeout_s: float,
+    hnsw_ef_search: int | None = None,
 ) -> list[tuple[int | None, float | None]]:
     """Paced POST /retrieve; record API duration_ms from JSON on 200 responses."""
     url = base_url.rstrip("/") + "/retrieve"
     body: dict[str, Any] = {"query": query, "k": k}
     if tenant_id is not None:
         body["tenant_id"] = tenant_id
+    if hnsw_ef_search is not None:
+        body["hnsw_ef_search"] = hnsw_ef_search
     headers = _headers(api_key)
 
     results: list[tuple[int | None, float | None]] = []
@@ -209,7 +192,6 @@ async def _measure(
     concurrency: int,
     timeout_s: float,
 ) -> dict[str, Any]:
-    _patch_ef_search(base_url=base_url, ef_search=ef_search, api_key=api_key, timeout_s=timeout_s)
     if warmup_s > 0:
         await _run_load_duration_ms(
             base_url=base_url,
@@ -221,6 +203,7 @@ async def _measure(
             api_key=api_key,
             concurrency=concurrency,
             timeout_s=timeout_s,
+            hnsw_ef_search=ef_search,
         )
     rows = await _run_load_duration_ms(
         base_url=base_url,
@@ -232,6 +215,7 @@ async def _measure(
         api_key=api_key,
         concurrency=concurrency,
         timeout_s=timeout_s,
+        hnsw_ef_search=ef_search,
     )
     summary = _summarize_duration_ms(rows)
     summary["hnsw_ef_search"] = ef_search
@@ -424,7 +408,6 @@ Examples:
             )
         results.append(summary)
     _assign_notes(results)
-    _clear_overrides(base_url=args.base_url, api_key=args.api_key, timeout_s=args.timeout)
 
     payload = {
         "meta": {

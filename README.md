@@ -12,11 +12,11 @@ ef_search → latency (p50) and recall@k vs oracle
 
     ef    p50_ms   recall  latency bar / recall bar
 ------------------------------------------------------------------------
-     8     0.842    0.067  L|░░░░░░░░░░░░░░░░░░░░| R|█░░░░░░░░░░░░░░░░░░░|
-    16     0.852    0.067  L|█░░░░░░░░░░░░░░░░░░░| R|█░░░░░░░░░░░░░░░░░░░|
-    40     0.877    0.067  L|██░░░░░░░░░░░░░░░░░░| R|█░░░░░░░░░░░░░░░░░░░|
-    96     0.894    0.067  L|████░░░░░░░░░░░░░░░░| R|█░░░░░░░░░░░░░░░░░░░|
-   200     1.127    0.533  L|████████████████████| R|███████████░░░░░░░░░|
+     8     0.826    0.400  L|░░░░░░░░░░░░░░░░░░░░| R|████████░░░░░░░░░░░░|
+    16     0.994    0.740  L|██████░░░░░░░░░░░░░░| R|███████████████░░░░░|
+    40     1.129    0.900  L|██████████░░░░░░░░░░| R|██████████████████░░|
+    96     1.433    0.980  L|████████████████████| R|████████████████████|
+   200     1.122    0.980  L|██████████░░░░░░░░░░| R|████████████████████|
 
 L = p50 duration_ms (relative) · R = mean |hit∩oracle| / |oracle| over gold queries
 ```
@@ -34,7 +34,7 @@ make demo                      # seed 10k + modest HNSW rebuild → chart
 No Pinecone. No LangChain maze. No OpenAI key for the default path.
 
 **Recall method:** exact cosine top-`k` (`exact=true`, seq scan) vs HNSW at each `ef_search`.
-`make demo` rebuilds a modest HNSW (`m=4`, `ef_construction=8`) so the knob is visible on a 10k lab corpus.
+`make demo` rebuilds a modest HNSW (`m=6`, `ef_construction=16`, recall@20) so the knob is visible on a 10k lab corpus.
 
 **Problem:** RAG tutorials stop at “call the LLM.” Production pain is often **retrieval latency and recall** inside Postgres.
 

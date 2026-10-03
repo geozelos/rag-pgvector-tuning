@@ -36,8 +36,8 @@ async def rebuild(*, database_url: str, m: int, ef_construction: int) -> None:
 def main() -> int:
     p = argparse.ArgumentParser(description="Rebuild demo HNSW index (modest build params).")
     p.add_argument("--database-url", default=DEFAULT_URL)
-    p.add_argument("--m", type=int, default=8)
-    p.add_argument("--ef-construction", type=int, default=32)
+    p.add_argument("--m", type=int, default=6)
+    p.add_argument("--ef-construction", type=int, default=16)
     args = p.parse_args()
     if args.m < 2 or args.ef_construction < 4:
         p.error("m/ef_construction too small")

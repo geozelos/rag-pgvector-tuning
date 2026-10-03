@@ -21,20 +21,6 @@ def _headers(api_key: str | None) -> dict[str, str] | None:
     return {"X-API-Key": api_key}
 
 
-def _patch_ef_search(base_url: str, ef_search: int, api_key: str | None, timeout_s: float) -> None:
-    url = base_url.rstrip("/") + "/config/runtime-search"
-    with httpx.Client(timeout=timeout_s) as client:
-        r = client.patch(url, json={"hnsw_ef_search": ef_search}, headers=_headers(api_key))
-        r.raise_for_status()
-
-
-def _clear_overrides(base_url: str, api_key: str | None, timeout_s: float) -> None:
-    url = base_url.rstrip("/") + "/config/runtime-search"
-    with httpx.Client(timeout=timeout_s) as client:
-        r = client.patch(url, json={"clear_overrides": True}, headers=_headers(api_key))
-        r.raise_for_status()
-
-
 def _retrieve(
     *,
     base_url: str,
@@ -43,9 +29,12 @@ def _retrieve(
     tenant_id: str,
     api_key: str | None,
     timeout_s: float,
+    hnsw_ef_search: int | None = None,
 ) -> dict[str, Any]:
     url = base_url.rstrip("/") + "/retrieve"
-    body = {"query": query, "k": k, "tenant_id": tenant_id}
+    body: dict[str, Any] = {"query": query, "k": k, "tenant_id": tenant_id}
+    if hnsw_ef_search is not None:
+        body["hnsw_ef_search"] = hnsw_ef_search
     with httpx.Client(timeout=timeout_s) as client:
         r = client.post(url, json=body, headers=_headers(api_key))
         r.raise_for_status()
@@ -108,7 +97,6 @@ def main() -> int:
     args = parser.parse_args()
 
     low_ef, high_ef = 24, 96
-    _patch_ef_search(args.base_url, low_ef, args.api_key, args.timeout)
     low = _compact_response(
         _retrieve(
             base_url=args.base_url,
@@ -117,9 +105,9 @@ def main() -> int:
             tenant_id=args.tenant_id,
             api_key=args.api_key,
             timeout_s=args.timeout,
+            hnsw_ef_search=low_ef,
         )
     )
-    _patch_ef_search(args.base_url, high_ef, args.api_key, args.timeout)
     high = _compact_response(
         _retrieve(
             base_url=args.base_url,
@@ -128,6 +116,7 @@ def main() -> int:
             tenant_id=args.tenant_id,
             api_key=args.api_key,
             timeout_s=args.timeout,
+            hnsw_ef_search=high_ef,
         )
     )
 
@@ -148,7 +137,6 @@ def main() -> int:
     compare_path = ASSETS_DIR / "ef-search-comparison.png"
     _render_png(single_lines, retrieve_path)
     _render_png(compare_lines, compare_path, width=1240)
-    _clear_overrides(args.base_url, args.api_key, args.timeout)
     print(f"Wrote {retrieve_path}")
     print(f"Wrote {compare_path}")
     return 0

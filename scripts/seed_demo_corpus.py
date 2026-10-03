@@ -4,8 +4,8 @@ Seed a reproducible demo corpus via POST /ingest/chunks for latency / recall dem
 
 Uses **httpx** from the default install (**`uv sync`**).
 
-Builds dense topical clusters (many near-duplicate distractors) so approximate HNSW
-search can diverge from exact cosine order — needed for ``ef_search`` ↔ recall demos.
+Builds topical clusters on a similarity ladder (stem plus increasing unique noise)
+so exact top-k is stable and HNSW ``ef_search`` can move recall.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from typing import Any
 
 import httpx
 
-# Shared vocabulary per cluster → many near neighbors in feature-hash space.
+# One vocabulary per cluster. Chunk rank adds noise so neighbors are ordered, not tied.
 CLUSTER_STEMS = (
     "HNSW ef_search latency recall approximate nearest neighbor pgvector query exploration",
     "IVFFlat probes inverted lists scan approximate search postgresql vector index",
@@ -28,26 +28,41 @@ CLUSTER_STEMS = (
 )
 
 
+def content_for_rank(stem_tokens: list[str], rank: int, seq: int) -> str:
+    """Text whose feature-hash vector falls away from the stem as ``rank`` grows.
+
+    Every chunk stays on its topic. Low ranks add little unique noise (exact top-k).
+    Higher ranks add more noise tokens so approximate search can stop early.
+    """
+    if not stem_tokens:
+        raise ValueError("stem_tokens must be non-empty")
+    if rank < 10:
+        noise_n = rank * 2
+    elif rank < 80:
+        noise_n = 20 + (rank - 10)
+    else:
+        noise_n = 90 + (rank % 40)
+    noise = [f"z{seq}w{j}" for j in range(noise_n)]
+    return " ".join([*stem_tokens, *stem_tokens, *noise])
+
+
 def _chunk_rows(*, total: int, tenant_id: str, source_type: str) -> list[dict[str, Any]]:
-    """Generate ``total`` near-duplicate cluster variants (dense ANN neighborhood)."""
+    """Generate ``total`` chunks: a few strong neighbors per topic, then weaker ones."""
     rows: list[dict[str, Any]] = []
-    stems = list(CLUSTER_STEMS)
+    stems = [stem.split() for stem in CLUSTER_STEMS]
+    n_clusters = len(stems)
     for i in range(total):
-        stem = stems[i % len(stems)]
-        # Slight wording drift keeps vectors close but not identical.
-        content = (
-            f"{stem}. Variant {i} near-duplicate cluster member for ANN stress. "
-            f"Keywords echo: {stem.split()[i % 5]} {stem.split()[(i + 2) % 7]}."
-        )
-        doc_id = f"cluster-{i % len(stems):02d}-doc-{i // 5:05d}"
+        cluster = i % n_clusters
+        rank = i // n_clusters
+        doc_id = f"cluster-{cluster:02d}-doc-{i // 5:05d}"
         rows.append(
             {
                 "tenant_id": tenant_id,
                 "source_type": source_type,
                 "doc_id": doc_id,
                 "chunk_index": i % 5,
-                "content": content,
-                "metadata": {"bench": True, "seq": i, "cluster": i % len(stems)},
+                "content": content_for_rank(stems[cluster], rank, i),
+                "metadata": {"bench": True, "seq": i, "cluster": cluster, "rank": rank},
             }
         )
     return rows

@@ -88,7 +88,7 @@
                 "type": "null"
               }
             ],
-            "description": "Per-request HNSW ef_search for this retrieve only. Must be within tuner_guardrails.yaml bounds and on the runtime whitelist. Does not change process-wide PATCH /config/runtime-search.",
+            "description": "Per-request HNSW ef_search for this retrieve only. Must be within tuner_guardrails.yaml bounds and on the runtime whitelist. Does not change process-wide PATCH /config/runtime-search. Rejected when exact is true or the active profile is not HNSW.",
             "title": "Hnsw Ef Search"
           },
           "k": {
@@ -224,7 +224,7 @@
   "info": {
     "description": "RAG retrieval demo: PostgreSQL pgvector + YAML-driven search parameter tuning.",
     "title": "rag-pgvector-tuning",
-    "version": "1.5.1"
+    "version": "1.5.2"
   },
   "openapi": "3.1.0",
   "paths": {

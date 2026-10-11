@@ -24,14 +24,20 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return float(np.dot(va, vb) / (np.linalg.norm(va) * np.linalg.norm(vb)))
 
 
-def test_content_for_rank_similarity_ladder() -> None:
+def test_content_for_rank_similarity_decreases_with_rank() -> None:
+    """Adjacent ranks stay ordered, including past the old noise-count wrap."""
     stem = _seed.CLUSTER_STEMS[0]
     tokens = stem.split()
     dim = 768
     query = demo_embedding(stem, dim)
-    close = _cosine(query, demo_embedding(_seed.content_for_rank(tokens, 0, 0), dim))
-    mid = _cosine(query, demo_embedding(_seed.content_for_rank(tokens, 20, 100), dim))
-    far = _cosine(query, demo_embedding(_seed.content_for_rank(tokens, 400, 2000), dim))
-    assert close > mid > far
-    assert close > 0.95
-    assert far < 0.7
+    n_clusters = len(_seed.CLUSTER_STEMS)
+    ranks = list(range(0, 30)) + [78, 79, 80, 81, 119, 120, 121, 400]
+    sims: list[float] = []
+    for rank in ranks:
+        seq = rank * n_clusters
+        text = _seed.content_for_rank(tokens, rank, seq)
+        sims.append(_cosine(query, demo_embedding(text, dim)))
+    for earlier, later in zip(sims, sims[1:]):
+        assert earlier > later
+    assert sims[0] > 0.95
+    assert sims[-1] < 0.7

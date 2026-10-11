@@ -403,7 +403,8 @@ class RetrievePayload(BaseModel):
         description=(
             "Per-request HNSW ef_search for this retrieve only. Must be within "
             "tuner_guardrails.yaml bounds and on the runtime whitelist. Does not change "
-            "process-wide PATCH /config/runtime-search."
+            "process-wide PATCH /config/runtime-search. Rejected when exact is true or "
+            "the active profile is not HNSW."
         ),
     )
 
@@ -442,6 +443,17 @@ async def retrieve(req: Request, body: RetrievePayload) -> dict[str, Any]:
             status_code=400,
             detail="Invalid runtime search override.",
         ) from None
+
+    if body.hnsw_ef_search is not None and body.exact:
+        raise HTTPException(
+            status_code=400,
+            detail="hnsw_ef_search cannot be combined with exact=true.",
+        )
+    if body.hnsw_ef_search is not None and profile.index_family != "hnsw":
+        raise HTTPException(
+            status_code=400,
+            detail="hnsw_ef_search applies only when the active profile index_family is hnsw.",
+        )
 
     ef = session.hnsw_ef_search or profile.search.hnsw_ef_search
     probes = session.ivfflat_probes or profile.search.ivfflat_probes

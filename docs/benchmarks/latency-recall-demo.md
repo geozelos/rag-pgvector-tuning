@@ -15,7 +15,7 @@ Each sweep point sends `hnsw_ef_search` on that `POST /retrieve` only. It does n
 | Tenant | `demo` |
 | k | 20 |
 | HNSW build | m=6, ef_construction=16 |
-| Oracle | `exact_seqscan_topk_doc_id` |
+| Oracle | `exact_seqscan_topk_row_id` |
 | Samples / ef | 25 (+ 3 warmup) |
 | Corpus chunks | 10000 |
 

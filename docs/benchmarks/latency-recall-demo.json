@@ -10,7 +10,7 @@
     "samples": 25,
     "warmup": 3,
     "corpus_chunks": 10000,
-    "recall_method": "exact_seqscan_topk_doc_id",
+    "recall_method": "exact_seqscan_topk_row_id",
     "embedding_note": "demo feature-hash (offline)"
   },
   "results": [
@@ -95,7 +95,7 @@
       "recall_queries": 5
     }
   ],
-  "oracle_doc_ids": {
+  "oracle_row_ids": {
     "HNSW ef_search latency recall approximate nearest neighbor pgvector query exploration": [
       "1",
       "6",

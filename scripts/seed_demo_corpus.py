@@ -4,8 +4,9 @@ Seed a reproducible demo corpus via POST /ingest/chunks for latency / recall dem
 
 Uses **httpx** from the default install (**`uv sync`**).
 
-Builds topical clusters on a similarity ladder (stem plus increasing unique noise)
-so exact top-k is stable and HNSW ``ef_search`` can move recall.
+Builds topical clusters on a similarity ladder (fixed stem weight, more copies of
+a fixed noise vocabulary as rank grows) so exact top-k is the lowest ranks and
+HNSW ``ef_search`` can move recall.
 """
 
 from __future__ import annotations
@@ -18,7 +19,10 @@ from typing import Any
 
 import httpx
 
-# One vocabulary per cluster. Chunk rank adds noise so neighbors are ordered, not tied.
+# One vocabulary per cluster. Rank only changes how many times a fixed noise
+# vocabulary is repeated. Feature hashing adds each token linearly, so cosine
+# to the stem falls as rank grows. Unique per-row tokens are omitted: a single
+# hashed token can land on the stem and invert adjacent ranks.
 CLUSTER_STEMS = (
     "HNSW ef_search latency recall approximate nearest neighbor pgvector query exploration",
     "IVFFlat probes inverted lists scan approximate search postgresql vector index",
@@ -26,24 +30,28 @@ CLUSTER_STEMS = (
     "metadata filter jsonb containment tenant scope before vector ordering candidates",
     "YAML profile hnsw ivfflat search knobs workload defaults guardrails tuner",
 )
+_NOISE_TOKENS = ("qqnoise", "xxdistractor", "yyfiller", "wwmargin")
+_STEM_REPS = 8
 
 
 def content_for_rank(stem_tokens: list[str], rank: int, seq: int) -> str:
     """Text whose feature-hash vector falls away from the stem as ``rank`` grows.
 
-    Every chunk stays on its topic. Low ranks add little unique noise (exact top-k).
-    Higher ranks add more noise tokens so approximate search can stop early.
+    ``seq`` is the corpus row index. It is checked but not written into the text,
+    so it cannot perturb the ladder.
     """
     if not stem_tokens:
         raise ValueError("stem_tokens must be non-empty")
-    if rank < 10:
-        noise_n = rank * 2
-    elif rank < 80:
-        noise_n = 20 + (rank - 10)
-    else:
-        noise_n = 90 + (rank % 40)
-    noise = [f"z{seq}w{j}" for j in range(noise_n)]
-    return " ".join([*stem_tokens, *stem_tokens, *noise])
+    if rank < 0:
+        raise ValueError("rank must be non-negative")
+    if seq < 0:
+        raise ValueError("seq must be non-negative")
+    parts: list[str] = []
+    for _ in range(_STEM_REPS):
+        parts.extend(stem_tokens)
+    for _ in range(rank):
+        parts.extend(_NOISE_TOKENS)
+    return " ".join(parts)
 
 
 def _chunk_rows(*, total: int, tenant_id: str, source_type: str) -> list[dict[str, Any]]:

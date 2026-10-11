@@ -33,6 +33,7 @@ import httpx
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_EF_VALUES = (8, 16, 40, 96, 200)
 SEED_SCRIPT = REPO_ROOT / "scripts" / "seed_demo_corpus.py"
+RECALL_METHOD = "exact_seqscan_topk_row_id"
 
 
 def _gold_queries() -> tuple[dict[str, str], ...]:
@@ -87,7 +88,17 @@ def _retrieve(
     with httpx.Client(timeout=timeout_s) as client:
         r = client.post(url, json=body, headers=_headers(api_key))
         r.raise_for_status()
-        return r.json()
+        data = r.json()
+    if hnsw_ef_search is not None:
+        _require_applied_ef(data, hnsw_ef_search)
+    return data
+
+
+def _require_applied_ef(data: dict[str, Any], ef: int) -> None:
+    """Fail the sweep when the API did not apply the requested knob."""
+    got = data.get("hnsw_ef_search")
+    if got != ef:
+        raise RuntimeError(f"POST /retrieve echoed hnsw_ef_search={got!r}, expected {ef}")
 
 
 def _pct(sorted_vals: list[float], p: float) -> float:
@@ -420,7 +431,7 @@ def main() -> int:
                 "samples": args.samples,
                 "warmup": args.warmup,
                 "corpus_chunks": args.corpus_chunks,
-                "recall_method": "exact_seqscan_topk_doc_id",
+                "recall_method": RECALL_METHOD,
             },
             "results": results,
         }
@@ -485,11 +496,11 @@ def main() -> int:
             "samples": args.samples,
             "warmup": args.warmup,
             "corpus_chunks": args.corpus_chunks,
-            "recall_method": "exact_seqscan_topk_doc_id",
+            "recall_method": RECALL_METHOD,
             "embedding_note": "demo feature-hash (offline)",
         },
         "results": results,
-        "oracle_doc_ids": oracle,
+        "oracle_row_ids": oracle,
     }
     chart = _ascii_chart(results)
 

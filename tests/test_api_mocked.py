@@ -415,6 +415,44 @@ def test_retrieve_per_request_hnsw_ef_search_out_of_bounds(
     assert r.json()["detail"] == "Invalid runtime search override."
 
 
+def test_retrieve_exact_rejects_hnsw_ef_search(
+    http_client_mock_db: tuple[TestClient, object],
+) -> None:
+    client, conn = http_client_mock_db
+    r = client.post(
+        "/retrieve",
+        json={"query": "q", "k": 3, "exact": True, "hnsw_ef_search": 96},
+    )
+    assert r.status_code == 400
+    assert "exact" in r.json()["detail"]
+    conn.execute.assert_not_called()
+
+
+def test_retrieve_hnsw_ef_search_rejected_on_ivfflat_profile(
+    http_client_mock_db: tuple[TestClient, object],
+) -> None:
+    client, conn = http_client_mock_db
+    client.app.state.tuner.profiles.active_profile = "high_qps_approximate"
+    r = client.post("/retrieve", json={"query": "q", "k": 3, "hnsw_ef_search": 96})
+    assert r.status_code == 400
+    assert "hnsw" in r.json()["detail"].lower()
+    conn.execute.assert_not_called()
+
+
+def test_retrieve_without_ef_search_keeps_process_override(
+    http_client_mock_db: tuple[TestClient, object],
+) -> None:
+    client, conn = http_client_mock_db
+    patch = client.patch("/config/runtime-search", json={"hnsw_ef_search": 48})
+    assert patch.status_code == 200
+    r = client.post("/retrieve", json={"query": "q", "k": 3})
+    assert r.status_code == 200
+    assert r.json()["hnsw_ef_search"] == 48
+    assert client.app.state.tuner.overrides.hnsw_ef_search == 48
+    executed = [(c.args[0], c.args[1] if len(c.args) > 1 else None) for c in conn.execute.await_args_list]
+    assert any("hnsw.ef_search" in str(sql) and val == "48" for sql, val in executed)
+
+
 def test_retrieve_per_request_hnsw_ef_search_whitelist_denied(
     http_client_mock_db: tuple[TestClient, object],
 ) -> None:

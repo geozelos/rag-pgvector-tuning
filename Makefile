@@ -87,3 +87,9 @@ assert httpx.get(u,timeout=2).status_code==200, 'API not ready'"
 .PHONY: readme-assets
 readme-assets: ## Regenerate docs/assets/*.png from live retrieve responses
 	uv run --with pillow python scripts/generate_readme_assets.py
+
+.PHONY: compare
+compare: ## Show passages a fast search misses versus the exact top-k (API must be up)
+	uv run rag-cli compare \
+		--query "HNSW ef_search latency recall approximate nearest neighbor pgvector query exploration" \
+		--k 20 --ef-search 8 --tenant-id demo

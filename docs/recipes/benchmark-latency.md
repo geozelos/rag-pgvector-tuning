@@ -20,15 +20,15 @@ Artifacts:
 - `docs/benchmarks/results.json` — machine-readable samples
 - `docs/benchmarks/latency-ef-search.md` — methodology + markdown table
 
-## README assets (optional)
+## Retrieve screenshots (optional)
 
-Regenerate terminal-style PNGs for the README demo section:
+The README does not embed these. Regenerate local terminal-style PNGs from a running API:
 
 ```bash
 uv run --with pillow python scripts/generate_readme_assets.py
 ```
 
-Writes `docs/assets/retrieve-duration.png` and `docs/assets/ef-search-comparison.png`.
+Writes `docs/assets/retrieve-duration.png` and `docs/assets/ef-search-comparison.png` (one line per JSON row, so the two searches do not paint on top of each other).
 
 ## Customize
 

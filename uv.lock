@@ -1224,7 +1224,7 @@ wheels = [
 
 [[package]]
 name = "rag-pgvector-tuning"
-version = "1.5.2"
+version = "1.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "asyncpg" },

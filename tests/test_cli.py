@@ -190,3 +190,144 @@ def test_cli_ingest_from_file(tmp_path, monkeypatch: pytest.MonkeyPatch, capsys:
     code = cli_mod.main(["ingest", "--file", str(p)])
     assert code == 0
     assert json.loads(capsys.readouterr().out)["upserted"] == 1
+
+
+def test_compare_report_lists_missed_passages_by_exact_rank() -> None:
+    exact = {
+        "duration_ms": 14.2,
+        "results": [
+            {"id": 1, "doc_id": "doc-a", "chunk_index": 0, "content": "kept"},
+            {"id": 2, "doc_id": "doc-a", "chunk_index": 2, "content": "first missed passage"},
+            {"id": 3, "doc_id": "doc-c", "chunk_index": 0, "content": "also missed"},
+        ],
+    }
+    fast = {
+        "duration_ms": 1.1,
+        "results": [
+            {"id": 1, "doc_id": "doc-a", "chunk_index": 0, "content": "kept"},
+            {"id": 9, "doc_id": "other", "chunk_index": 1, "content": "impostor"},
+        ],
+    }
+    report = cli_mod.build_compare_report(
+        query="where is the policy",
+        k=10,
+        ef_search=8,
+        exact=exact,
+        fast=fast,
+    )
+    assert report["found"] == 1
+    assert report["full_count"] == 3
+    assert report["fast_duration_ms"] == 1.1
+    assert report["full_duration_ms"] == 14.2
+    assert [m["rank"] for m in report["missed"]] == [2, 3]
+    assert report["missed"][0]["doc_id"] == "doc-a"
+    assert report["missed"][0]["chunk_index"] == 2
+    assert report["missed"][0]["snippet"] == "first missed passage"
+
+
+def test_compare_report_empty_exact_list() -> None:
+    report = cli_mod.build_compare_report(
+        query="nothing",
+        k=10,
+        ef_search=8,
+        exact={"duration_ms": 2.0, "results": []},
+        fast={"duration_ms": 1.0, "results": [{"id": 1, "doc_id": "x", "chunk_index": 0, "content": "nope"}]},
+    )
+    assert report["found"] == 0
+    assert report["full_count"] == 0
+    assert report["missed"] == []
+
+
+def test_cli_compare_text_lists_missed(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    calls: list[dict] = []
+
+    class FakeClient:
+        def __init__(self, *a: object, **k: object) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+        def post(self, path: str, json: dict | None = None, params: dict | None = None) -> _OkJsonResp:
+            assert path == "/retrieve"
+            calls.append(json or {})
+            if json and json.get("exact"):
+                return _OkJsonResp(
+                    {
+                        "duration_ms": 14.2,
+                        "results": [
+                            {"id": 1, "doc_id": "doc-a", "chunk_index": 0, "content": "kept"},
+                            {"id": 2, "doc_id": "doc-a", "chunk_index": 2, "content": "the missed bit"},
+                        ],
+                    }
+                )
+            return _OkJsonResp(
+                {
+                    "duration_ms": 1.1,
+                    "results": [{"id": 1, "doc_id": "doc-a", "chunk_index": 0, "content": "kept"}],
+                }
+            )
+
+    monkeypatch.setattr(cli_mod.httpx, "Client", FakeClient)
+    code = cli_mod.main(
+        ["compare", "--query", "where is the policy", "--k", "10", "--ef-search", "8", "--tenant-id", "demo"]
+    )
+    assert code == 0
+    assert calls[0]["exact"] is True
+    assert "hnsw_ef_search" not in calls[0]
+    assert calls[1]["hnsw_ef_search"] == 8
+    assert calls[1].get("exact") is not True
+    assert calls[0]["tenant_id"] == "demo"
+    out = capsys.readouterr().out
+    assert 'Question: "where is the policy"  k=10' in out
+    assert "Fast search (ef_search=8): 1.1 ms" in out
+    assert "Full search: 14.2 ms" in out
+    assert "Found 1 of 2 passages the full search returns." in out
+    assert '#2  doc-a / chunk 2   "the missed bit"' in out
+
+
+def test_cli_compare_http_error_stops(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    calls: list[dict] = []
+
+    class FakeClient:
+        def __init__(self, *a: object, **k: object) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+        def post(self, path: str, json: dict | None = None, params: dict | None = None) -> _ErrResp:
+            calls.append(json or {})
+            return _ErrResp(500, {"detail": "db down"})
+
+    monkeypatch.setattr(cli_mod.httpx, "Client", FakeClient)
+    code = cli_mod.main(["compare", "--query", "q", "--ef-search", "8"])
+    assert code == 1
+    assert len(calls) == 1
+    assert calls[0]["exact"] is True
+    err = json.loads(capsys.readouterr().err)
+    assert err["status_code"] == 500
+
+
+def test_cli_compare_json(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    class FakeClient:
+        def __init__(self, *a: object, **k: object) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+        def post(self, path: str, json: dict | None = None, params: dict | None = None) -> _OkJsonResp:
+            if json and json.get("exact"):
+                return _OkJsonResp({"duration_ms": 3, "results": []})
+            return _OkJsonResp({"duration_ms": 1, "results": []})
+
+    monkeypatch.setattr(cli_mod.httpx, "Client", FakeClient)
+    code = cli_mod.main(["compare", "--query", "q", "--json"])
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["query"] == "q"
+    assert payload["found"] == 0
+    assert payload["full_count"] == 0
+    assert payload["missed"] == []
+    assert payload["hnsw_ef_search"] == 8

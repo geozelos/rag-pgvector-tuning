@@ -23,4 +23,6 @@ Production-oriented notes (reverse proxy, OWASP mapping) stay in **[SECURITY.md]
 
 ## Operator shortcuts
 
-See the root **[Makefile](../Makefile)** (`make help`) and the **Operator ergonomics** section in the main README.
+See the root **[Makefile](../Makefile)** (`make help`) and the **Operator shortcuts** section in the main README.
+
+**Fast vs full search:** `make compare`, or `uv run rag-cli compare --query "..." --k 10 --ef-search 8 --tenant-id demo`. It prints the passages a fast search dropped. Details and a sample printout are in the main README.

@@ -60,21 +60,36 @@ def _compact_response(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _render_png(lines: list[str], out_path: Path, *, width: int = 1120, line_height: int = 28) -> None:
+_PNG_FONT_CANDIDATES = (
+    "/System/Library/Fonts/Menlo.ttc",
+    "/System/Library/Fonts/Supplemental/Andale Mono.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+)
+
+
+def _render_png(lines: list[str], out_path: Path, *, width: int = 1120, line_height: int = 18) -> None:
     try:
         from PIL import Image, ImageDraw, ImageFont
     except ImportError as exc:
         raise SystemExit("Install Pillow: uv run --with pillow python scripts/generate_readme_assets.py") from exc
 
     font = ImageFont.load_default()
-    height = 40 + len(lines) * line_height + 30
+    for path in _PNG_FONT_CANDIDATES:
+        if Path(path).is_file():
+            try:
+                font = ImageFont.truetype(path, size=14)
+                break
+            except OSError:
+                continue
+    flat = [row for line in lines for row in (line.splitlines() or [""])]
+    height = 48 + len(flat) * line_height + 24
     img = Image.new("RGB", (width, height), color=(18, 18, 20))
     draw = ImageDraw.Draw(img)
-    draw.rectangle((0, 0, width, 34), fill=(35, 35, 40))
-    draw.text((16, 10), "rag-pgvector-tuning — POST /retrieve", fill=(220, 220, 220), font=font)
-    y = 48
-    for line in lines:
-        draw.text((20, y), line, fill=(210, 230, 210), font=font)
+    draw.rectangle((0, 0, width, 32), fill=(35, 35, 40))
+    draw.text((16, 8), "rag-pgvector-tuning  POST /retrieve", fill=(220, 220, 220), font=font)
+    y = 44
+    for line in flat:
+        draw.text((16, y), line, fill=(210, 230, 210), font=font)
         y += line_height
     out_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(out_path)
@@ -84,6 +99,22 @@ def _json_lines(label: str, payload: dict[str, Any]) -> list[str]:
     text = json.dumps(payload, indent=2)
     wrapped = textwrap.indent(text, "  ")
     return [label, *wrapped.splitlines()]
+
+
+def _comparison_lines(
+    low_ef: int,
+    low: dict[str, Any],
+    high_ef: int,
+    high: dict[str, Any],
+) -> list[str]:
+    """One draw call per visual line. A multiline JSON string overlaps the next block."""
+    return [
+        f"ef_search={low_ef}",
+        *json.dumps(low, indent=2).splitlines(),
+        "",
+        f"ef_search={high_ef}",
+        *json.dumps(high, indent=2).splitlines(),
+    ]
 
 
 def main() -> int:
@@ -125,13 +156,7 @@ def main() -> int:
         "",
         *_json_lines("Response:", low)[1:],
     ]
-    compare_lines = [
-        f"ef_search={low_ef}",
-        json.dumps(low, indent=2),
-        "",
-        f"ef_search={high_ef}",
-        json.dumps(high, indent=2),
-    ]
+    compare_lines = _comparison_lines(low_ef, low, high_ef, high)
 
     retrieve_path = ASSETS_DIR / "retrieve-duration.png"
     compare_path = ASSETS_DIR / "ef-search-comparison.png"

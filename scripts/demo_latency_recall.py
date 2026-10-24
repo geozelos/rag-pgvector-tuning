@@ -145,26 +145,57 @@ def _ascii_chart(rows: list[dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n"
 
 
+_PNG_FONT_CANDIDATES = (
+    "/System/Library/Fonts/Menlo.ttc",
+    "/System/Library/Fonts/Supplemental/Andale Mono.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+    "/Library/Fonts/Arial Unicode.ttf",
+)
+
+
+def _ascii_for_png(text: str) -> str:
+    """Glyphs Pillow's built-in bitmap font draws as empty boxes."""
+    return (
+        text.replace("→", "->")
+        .replace("×", "x")
+        .replace("∩", "&")
+        .replace("·", ".")
+        .replace("█", "#")
+        .replace("░", "-")
+    )
+
+
+def _png_font(size: int = 15):
+    """Return (font, can_draw_chart_glyphs). Bitmap fallback cannot."""
+    from PIL import ImageFont
+
+    for path in _PNG_FONT_CANDIDATES:
+        if not Path(path).is_file():
+            continue
+        try:
+            return ImageFont.truetype(path, size=size), True
+        except OSError:
+            continue
+    return ImageFont.load_default(), False
+
+
 def _render_png(ascii_text: str, out_path: Path) -> bool:
     try:
-        from PIL import Image, ImageDraw, ImageFont
+        from PIL import Image, ImageDraw
     except ImportError:
         return False
 
-    lines = ascii_text.rstrip("\n").splitlines() or [""]
-    font = ImageFont.load_default()
-    line_h = 16
-    width = 920
+    font, unicode_ok = _png_font()
+    source = ascii_text if unicode_ok else _ascii_for_png(ascii_text)
+    lines = source.rstrip("\n").splitlines() or [""]
+    title = "rag-pgvector-tuning  ef_search latency x recall"
+    line_h = 22 if unicode_ok else 16
+    width = 980
     height = 40 + len(lines) * line_h + 24
     img = Image.new("RGB", (width, height), color=(18, 18, 20))
     draw = ImageDraw.Draw(img)
     draw.rectangle((0, 0, width, 28), fill=(35, 35, 40))
-    draw.text(
-        (12, 8),
-        "rag-pgvector-tuning — ef_search latency × recall",
-        fill=(220, 220, 220),
-        font=font,
-    )
+    draw.text((12, 6), title, fill=(220, 220, 220), font=font)
     y = 40
     for line in lines:
         draw.text((16, y), line, fill=(200, 220, 200), font=font)
@@ -334,25 +365,27 @@ def _markdown(payload: dict[str, Any], chart: str) -> str:
     return "\n".join(lines)
 
 
-def _sync_readme_chart(chart: str) -> None:
-    """Replace the fenced ASCII chart block at the top of README.md."""
-    readme = REPO_ROOT / "README.md"
+CHART_START = "<!-- latency-recall-chart:start -->"
+CHART_END = "<!-- latency-recall-chart:end -->"
+
+
+def _sync_readme_chart(chart: str, readme_path: Path | None = None) -> None:
+    """Replace only the marked ASCII chart fence in README.md.
+
+    The user-facing example above that fence is also a ```text block.
+    Markers keep ``make demo`` from overwriting it.
+    """
+    readme = readme_path or (REPO_ROOT / "README.md")
     text = readme.read_text(encoding="utf-8")
-    start = text.find("```text\n")
-    if start < 0:
-        return
-    end = text.find("\n```", start)
-    if end < 0:
-        return
-    new_block = "```text\n" + chart.rstrip("\n") + "\n```"
-    updated = text[:start] + new_block + text[end + len("\n```") :]
-    # Drop illustrative disclaimer if present
-    updated = updated.replace(
-        "> Chart from [`docs/assets/latency-recall-chart.txt`](docs/assets/latency-recall-chart.txt). "
-        "Numbers are illustrative until you run `make demo` on your machine.\n\n",
-        "> Measured chart (also in [`docs/assets/latency-recall-chart.txt`](docs/assets/latency-recall-chart.txt)). "
-        "Reproduce: `make up && make demo`.\n\n",
-    )
+    start = text.find(CHART_START)
+    end = text.find(CHART_END)
+    if start < 0 or end < 0 or end < start:
+        raise RuntimeError(
+            "README is missing the latency-recall-chart markers "
+            f"({CHART_START} … {CHART_END})."
+        )
+    new_block = CHART_START + "\n```text\n" + chart.rstrip("\n") + "\n```\n" + CHART_END
+    updated = text[:start] + new_block + text[end + len(CHART_END) :]
     readme.write_text(updated, encoding="utf-8")
 
 
@@ -391,7 +424,7 @@ def main() -> int:
     parser.add_argument(
         "--sync-readme",
         action="store_true",
-        help="Update the ASCII chart fence in README.md from this run",
+        help="Replace the marked ASCII chart fence in README.md from this run",
     )
     parser.add_argument(
         "--dry-run",
